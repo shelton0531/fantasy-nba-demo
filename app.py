@@ -129,30 +129,40 @@ def token_status():
     try:
         from yahoo_config import load_token, is_token_expired, is_configured
         import time
-        raw_env = os.environ.get('YAHOO_TOKEN_JSON')
-        access_token_env = os.environ.get('YAHOO_ACCESS_TOKEN')
-        refresh_token_env = os.environ.get('YAHOO_REFRESH_TOKEN')
         token = load_token()
+        now = int(time.time())
+        env_access = os.environ.get('YAHOO_ACCESS_TOKEN')
+        env_refresh = os.environ.get('YAHOO_REFRESH_TOKEN')
+        env_created = os.environ.get('YAHOO_TOKEN_CREATED_AT')
         if not token:
             return jsonify({
                 'configured': False,
                 'status': 'missing',
-                'YAHOO_TOKEN_JSON_set': bool(raw_env),
-                'YAHOO_TOKEN_JSON_first30': raw_env[:30] if raw_env else None,
-                'YAHOO_ACCESS_TOKEN_set': bool(access_token_env),
-                'YAHOO_ACCESS_TOKEN_first20': access_token_env[:20] if access_token_env else None,
-                'YAHOO_REFRESH_TOKEN_set': bool(refresh_token_env),
+                'YAHOO_ACCESS_TOKEN_set': bool(env_access),
+                'YAHOO_REFRESH_TOKEN_set': bool(env_refresh),
+                'YAHOO_TOKEN_CREATED_AT_set': bool(env_created),
+                'YAHOO_TOKEN_JSON_set': bool(os.environ.get('YAHOO_TOKEN_JSON')),
             })
         created_at = token.get('created_at', 0)
         expires_in = token.get('expires_in', 3600)
-        elapsed = time.time() - created_at
+        elapsed = now - created_at
         remaining = max(0, expires_in - elapsed)
+        # 判斷實際來源
+        if env_access:
+            source = 'env_individual'
+        elif os.environ.get('YAHOO_TOKEN_JSON'):
+            source = 'env_json'
+        else:
+            source = 'file'
         return jsonify({
-            'configured': is_configured(),
+            'configured': True,
             'status': 'expired' if remaining == 0 else ('expiring_soon' if remaining < 300 else 'ok'),
             'expires_in_seconds': int(remaining),
             'expires_in_minutes': round(remaining / 60, 1),
-            'source': 'env_var' if __import__('os').environ.get('YAHOO_TOKEN_JSON') else 'file'
+            'source': source,
+            'created_at': created_at,
+            'now': now,
+            'elapsed_minutes': round(elapsed / 60, 1),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
