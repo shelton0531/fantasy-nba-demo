@@ -40,11 +40,24 @@ def load_token():
     if _token_override is not None:
         return _token_override
 
-    # 2. 環境變數（Railway / Render 部署時設定）
+    # 2a. 分開的環境變數（最穩定，避免 JSON 格式問題）
+    access_token = os.environ.get('YAHOO_ACCESS_TOKEN')
+    refresh_token = os.environ.get('YAHOO_REFRESH_TOKEN')
+    if access_token and refresh_token:
+        return {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': int(os.environ.get('YAHOO_TOKEN_EXPIRES_IN', 3600)),
+            'created_at': int(os.environ.get('YAHOO_TOKEN_CREATED_AT', 0)),
+            'token_type': 'bearer',
+            'scope': None
+        }
+
+    # 2b. 單一 JSON 環境變數（備用）
     token_json = os.environ.get('YAHOO_TOKEN_JSON')
     if token_json:
         try:
-            return json.loads(token_json)
+            return json.loads(token_json.strip())
         except Exception as e:
             print(f"警告：YAHOO_TOKEN_JSON 環境變數格式錯誤: {e}")
 
