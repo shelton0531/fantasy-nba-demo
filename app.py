@@ -129,9 +129,15 @@ def token_status():
     try:
         from yahoo_config import load_token, is_token_expired, is_configured
         import time
+        raw_env = os.environ.get('YAHOO_TOKEN_JSON')
         token = load_token()
         if not token:
-            return jsonify({'configured': False, 'status': 'missing'})
+            return jsonify({
+                'configured': False,
+                'status': 'missing',
+                'env_var_set': bool(raw_env),
+                'env_var_length': len(raw_env) if raw_env else 0
+            })
         created_at = token.get('created_at', 0)
         expires_in = token.get('expires_in', 3600)
         elapsed = time.time() - created_at
