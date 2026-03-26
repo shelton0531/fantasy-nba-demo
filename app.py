@@ -130,22 +130,18 @@ def token_status():
         from yahoo_config import load_token, is_token_expired, is_configured
         import time
         raw_env = os.environ.get('YAHOO_TOKEN_JSON')
-        parse_error = None
-        if raw_env:
-            import json as _json
-            try:
-                _json.loads(raw_env)
-            except Exception as e:
-                parse_error = str(e)
+        access_token_env = os.environ.get('YAHOO_ACCESS_TOKEN')
+        refresh_token_env = os.environ.get('YAHOO_REFRESH_TOKEN')
         token = load_token()
         if not token:
             return jsonify({
                 'configured': False,
                 'status': 'missing',
-                'env_var_set': bool(raw_env),
-                'env_var_length': len(raw_env) if raw_env else 0,
-                'env_var_first20': raw_env[:20] if raw_env else None,
-                'parse_error': parse_error
+                'YAHOO_TOKEN_JSON_set': bool(raw_env),
+                'YAHOO_TOKEN_JSON_first30': raw_env[:30] if raw_env else None,
+                'YAHOO_ACCESS_TOKEN_set': bool(access_token_env),
+                'YAHOO_ACCESS_TOKEN_first20': access_token_env[:20] if access_token_env else None,
+                'YAHOO_REFRESH_TOKEN_set': bool(refresh_token_env),
             })
         created_at = token.get('created_at', 0)
         expires_in = token.get('expires_in', 3600)
