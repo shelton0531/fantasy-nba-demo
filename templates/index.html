@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fantasy NBA — 分析平台</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #1f2937;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --primary: #f97316;
+      --primary-dark: #c2410c;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --purple: #a855f7;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Ticker ── */
+    .ticker-wrap {
+      background: #1a0a00;
+      border-bottom: 1px solid var(--primary-dark);
+      overflow: hidden;
+      height: 36px;
+      display: flex;
+      align-items: center;
+    }
+    .ticker-label {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      font-size: 11px;
+      padding: 0 12px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    .ticker-track {
+      display: flex;
+      animation: ticker 40s linear infinite;
+      gap: 0;
+    }
+    .ticker-item {
+      padding: 0 24px;
+      font-size: 12px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-right: 1px solid var(--border);
+    }
+    .ticker-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .dot-danger { background: var(--red); }
+    .dot-warning { background: var(--yellow); }
+    .dot-success { background: var(--green); }
+    .dot-info { background: var(--blue); }
+    @keyframes ticker {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo h1 { font-size: 18px; font-weight: 700; }
+    .logo span { color: var(--primary); }
+    .header-meta { font-size: 12px; color: var(--text-muted); text-align: right; }
+    .header-meta strong { color: var(--text); }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 4px;
+      padding: 0 24px;
+    }
+    .nav-btn {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .nav-btn:hover { color: var(--text); }
+    .nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* ── Layout ── */
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    .col-span-2 { grid-column: span 2; }
+    @media (max-width: 900px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .col-span-2 { grid-column: span 1; }
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+    .badge-orange { background: rgba(249,115,22,.15); color: var(--primary); }
+    .badge-green  { background: rgba(34,197,94,.15);  color: var(--green); }
+    .badge-red    { background: rgba(239,68,68,.15);   color: var(--red); }
+    .badge-blue   { background: rgba(59,130,246,.15);  color: var(--blue); }
+    .badge-yellow { background: rgba(245,158,11,.15);  color: var(--yellow); }
+
+    /* ── Matchup Score ── */
+    .matchup-score {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 20px 0;
+    }
+    .score-team { text-align: center; }
+    .score-name { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+    .score-num { font-size: 42px; font-weight: 800; }
+    .score-num.win { color: var(--green); }
+    .score-num.lose { color: var(--red); }
+    .score-num.tied { color: var(--text-muted); }
+    .score-sep { text-align: center; font-size: 24px; color: var(--border); font-weight: 300; margin: 0 4px; }
+
+    /* ── Category Bars ── */
+    .cat-row {
+      display: grid;
+      grid-template-columns: 60px 1fr 70px 70px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .cat-row:last-child { border-bottom: none; }
+    .cat-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .cat-bar-wrap { position: relative; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+    .cat-bar { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .cat-bar.win  { background: var(--green); }
+    .cat-bar.lose { background: var(--red); }
+    .cat-bar.tied { background: var(--text-muted); }
+    .cat-my  { font-size: 13px; font-weight: 700; text-align: right; }
+    .cat-opp { font-size: 13px; color: var(--text-muted); text-align: right; }
+    .cat-status-win  { color: var(--green); }
+    .cat-status-lose { color: var(--red); }
+    .cat-status-tied { color: var(--text-muted); }
+
+    /* ── Player Cards ── */
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .player-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+    .player-card:hover { border-color: var(--primary); }
+    .player-card.out { border-color: rgba(239,68,68,.4); }
+    .player-card.questionable { border-color: rgba(245,158,11,.4); }
+    .player-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .player-name { font-size: 13px; font-weight: 700; line-height: 1.2; }
+    .player-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .player-avatar {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+    }
+    .player-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .stat-item { text-align: center; }
+    .stat-val { font-size: 15px; font-weight: 700; }
+    .stat-key { font-size: 10px; color: var(--text-muted); }
+    /* fantasy pts highlight */
+    .fantasy-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      padding: 6px 8px;
+      background: rgba(249,115,22,.08);
+      border-radius: 6px;
+    }
+    .fantasy-val { font-size: 15px; font-weight: 800; color: var(--primary); }
+    .fantasy-rank { font-size: 11px; color: var(--text-muted); }
+    /* extended stats row */
+    .ext-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .ext-stat { text-align: center; }
+    .ext-val { font-size: 12px; font-weight: 600; }
+    .ext-key { font-size: 9px; color: var(--text-muted); }
+    .player-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .games-badge {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .trend { font-size: 11px; font-weight: 600; }
+    .trend-hot  { color: var(--green); }
+    .trend-cold { color: var(--red); }
+    .trend-neutral { color: var(--text-muted); }
+    .status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 20px;
+      margin-top: 4px;
+      display: inline-block;
+    }
+    .status-out          { background: rgba(239,68,68,.2); color: var(--red); }
+    .status-questionable { background: rgba(245,158,11,.2); color: var(--yellow); }
+
+    /* ── Free Agent Cards ── */
+    .fa-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .fa-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .fa-name { font-size: 15px; font-weight: 700; }
+    .fa-sub  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .fa-score {
+      font-size: 24px; font-weight: 800;
+      color: var(--primary);
+      text-align: right;
+    }
+    .fa-score small { font-size: 11px; color: var(--text-muted); font-weight: 400; display: block; }
+    .fa-stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+    }
+    .fa-stat { text-align: center; }
+    .fa-stat .sv { font-size: 13px; font-weight: 700; }
+    .fa-stat .sk { font-size: 10px; color: var(--text-muted); }
+    .fa-reason {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      background: var(--surface);
+      border-left: 3px solid var(--primary);
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+    }
+    .fa-actions { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+    /* ── AI Recommendations ── */
+    .ai-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .ai-icon {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .ai-icon-high   { background: rgba(239,68,68,.15); }
+    .ai-icon-medium { background: rgba(245,158,11,.15); }
+    .ai-icon-low    { background: rgba(59,130,246,.15); }
+    .ai-content { flex: 1; }
+    .ai-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .ai-body  { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+    .ai-drop  { font-size: 11px; color: var(--red); margin-top: 6px; }
+
+    /* ── Section ── */
+    section { margin-bottom: 28px; }
+    .section-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px;
+    }
+    .section-title { font-size: 16px; font-weight: 700; }
+    .section-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Tabs ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Spinner ── */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* ── Tooltip ── */
+    .injury-tooltip {
+      font-size: 11px;
+      color: var(--yellow);
+      margin-top: 2px;
+    }
+
+    /* ── League Team Cards ── */
+    .league-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .team-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .team-card.my-team { border-color: var(--primary); }
+    .team-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .team-header:hover { background: rgba(255,255,255,.03); }
+    .team-title { font-size: 14px; font-weight: 700; }
+    .team-record {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .team-record .wins { color: var(--green); font-weight: 700; }
+    .team-record .losses { color: var(--red); font-weight: 700; }
+    .team-toggle { font-size: 12px; color: var(--text-muted); transition: transform .2s; }
+    .team-toggle.open { transform: rotate(180deg); }
+    .team-roster {
+      display: none;
+      border-top: 1px solid var(--border);
+    }
+    .team-roster.open { display: block; }
+    .roster-player {
+      display: grid;
+      grid-template-columns: 24px 1fr 36px 36px 36px 36px;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 16px;
+      font-size: 12px;
+      border-bottom: 1px solid rgba(48,54,61,.5);
+    }
+    .roster-player:last-child { border-bottom: none; }
+    .roster-player:hover { background: rgba(255,255,255,.02); }
+    .rp-pos { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+    .rp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rp-team { font-size: 10px; color: var(--text-muted); }
+    .rp-stat { text-align: right; font-weight: 600; }
+    .rp-stat.dim { color: var(--text-muted); font-weight: 400; }
+    .roster-header {
+      display: grid;
+      grid-template-columns: 24px 1fr 36px 36px 36px 36px;
+      gap: 6px;
+      padding: 4px 16px;
+      font-size: 10px;
+      color: var(--text-muted);
+      background: rgba(0,0,0,.2);
+      border-bottom: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Ticker -->
+<div class="ticker-wrap">
+  <div class="ticker-label">🏀 LIVE</div>
+  <div style="overflow:hidden;flex:1;">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏀</div>
+    <div>
+      <h1>Fantasy <span>NBA</span> 分析平台</h1>
+      <div style="font-size:11px;color:var(--text-muted);">Phase 1 Demo · 2024-25 Season</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <strong>第 <span id="header-week">22</span> 週</strong> · 對手：<span id="header-opp-name">載入中...</span><br>
+    週期：Mar 25 – Mar 31
+  </div>
+</header>
+
+<!-- Nav -->
+<nav>
+  <button class="nav-btn active" onclick="showView('dashboard', event)">📊 本週對戰</button>
+  <button class="nav-btn" onclick="showView('roster', event)">👥 我的陣容</button>
+  <button class="nav-btn" onclick="showView('league', event)">🏆 聯盟</button>
+  <button class="nav-btn" onclick="showView('freeagent', event)">🔍 自由市場</button>
+  <button class="nav-btn" onclick="showView('ai', event)">🤖 AI 建議</button>
+</nav>
+
+<main>
+
+  <!-- ── VIEW: Dashboard ── -->
+  <div class="view active" id="view-dashboard">
+
+    <section>
+      <div class="section-header">
+        <span class="section-title">本週對戰概況</span>
+        <div class="section-line"></div>
+      </div>
+      <div class="grid-2">
+        <!-- Score Card -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">比分</span>
+            <span class="badge badge-orange" id="matchup-record">載入中...</span>
+          </div>
+          <div class="matchup-score">
+            <div class="score-team">
+              <div class="score-name">你的球隊</div>
+              <div class="score-num" id="score-win">-</div>
+            </div>
+            <div class="score-sep">
+              <span id="score-vsep">-</span>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">T: <span id="score-ties" style="color:var(--text-muted);font-weight:700;">-</span></div>
+            </div>
+            <div class="score-team">
+              <div class="score-name" id="opp-name">對手</div>
+              <div class="score-num" id="score-lose">-</div>
+            </div>
+          </div>
+          <div style="text-align:center;font-size:12px;color:var(--text-muted);">
+            各項目勝出 / 落後 / 平手數
+          </div>
+        </div>
+
+        <!-- Category Summary -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">項目狀態</span>
+          </div>
+          <div id="cat-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-header">
+        <span class="section-title">各項目詳細比較</span>
+        <div class="section-line"></div>
+        <span style="font-size:12px;color:var(--text-muted);">我方 vs 對手</span>
+      </div>
+      <div class="card">
+        <div id="cat-bars" class="loading">載入中...</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── VIEW: Roster ── -->
+  <div class="view" id="view-roster">
+    <section>
+      <div class="section-header">
+        <span class="section-title">我的陣容</span>
+        <div class="section-line"></div>
+        <span style="font-size:12px;color:var(--text-muted);">本週累計數據</span>
+      </div>
+      <div id="player-grid" class="player-grid loading">載入中...</div>
+    </section>
+  </div>
+
+  <!-- ── VIEW: League ── -->
+  <div class="view" id="view-league">
+    <section>
+      <div class="section-header">
+        <span class="section-title">聯盟排名與陣容</span>
+        <div class="section-line"></div>
+        <span style="font-size:12px;color:var(--text-muted);" id="league-last-updated"></span>
+      </div>
+      <div id="league-grid" class="league-grid loading">載入中...</div>
+    </section>
+  </div>
+
+  <!-- ── VIEW: Free Agent ── -->
+  <div class="view" id="view-freeagent">
+    <section>
+      <div class="section-header">
+        <span class="section-title">自由市場推薦</span>
+        <div class="section-line"></div>
+        <span style="font-size:12px;color:var(--text-muted);">根據你的陣容缺口排序</span>
+      </div>
+      <div class="grid-2" id="fa-grid"></div>
+    </section>
+  </div>
+
+  <!-- ── VIEW: AI ── -->
+  <div class="view" id="view-ai">
+    <section>
+      <div class="section-header">
+        <span class="section-title">AI 智能建議</span>
+        <div class="section-line"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;" id="ai-list"></div>
+    </section>
+  </div>
+
+</main>
+
+<script>
+const API = '';
+
+function showView(name, evt) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
+}
+
+// ── Init ──
+async function init() {
+  try {
+    const results = await Promise.allSettled([
+      loadTicker(),
+      loadMatchup(),
+      loadRoster(),
+      loadLeague(),
+      loadFreeAgents(),
+      loadAI(),
+    ]);
+
+    results.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`Module ${idx} failed:`, result.reason);
+      }
+    });
+  } catch (error) {
+    console.error('Initialization error:', error);
+  }
+}
+
+// ── Error Handlers ──
+async function loadTicker() {
+  try {
+    const res = await fetch(`${API}/api/news`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const news = await res.json();
+    const track = document.getElementById('tickerTrack');
+    const items = [...news, ...news];
+    track.innerHTML = items.map(n => `
+      <div class="ticker-item">
+        <span class="ticker-dot dot-${n.severity}"></span>
+        <strong>${n.player}</strong> · ${n.message}
+        <span style="color:var(--text-muted);font-size:11px;margin-left:4px;">${n.time}</span>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('loadTicker error:', error);
+  }
+}
+
+async function loadMatchup() {
+  try {
+    const res = await fetch(`${API}/api/matchup`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    document.getElementById('matchup-record').textContent = data.record;
+
+    // 計算平手數並設定動態顏色
+    const ties = 9 - data.wins - data.losses;
+    const winEl = document.getElementById('score-win');
+    const loseEl = document.getElementById('score-lose');
+    winEl.textContent = data.wins;
+    loseEl.textContent = data.losses;
+    document.getElementById('score-ties').textContent = ties;
+
+    // 動態設定比分顏色
+    winEl.className = 'score-num ' + (data.wins > data.losses ? 'win' : data.wins < data.losses ? 'lose' : 'tied');
+    loseEl.className = 'score-num ' + (data.losses > data.wins ? 'win' : data.losses < data.wins ? 'lose' : 'tied');
+
+    document.getElementById('opp-name').textContent = data.opponent;
+    document.getElementById('header-opp-name').textContent = data.opponent;
+    if (data.is_real_data) {
+      document.getElementById('header-opp-name').title = '來自 Yahoo Fantasy 真實數據';
+    }
+
+    const cats = data.categories;
+    const summaryEl = document.getElementById('cat-summary');
+    summaryEl.innerHTML = cats.map(c => {
+      const cls = c.status === 'winning' ? 'badge-green' : c.status === 'losing' ? 'badge-red' : 'badge-blue';
+      const icon = c.status === 'winning' ? '▲' : c.status === 'losing' ? '▼' : '—';
+      return `<div class="badge ${cls}" style="text-align:center;padding:8px 4px;font-size:12px;">
+        ${c.label}<br><span style="font-size:16px;font-weight:800;">${icon} ${c.diff}</span>
+      </div>`;
+    }).join('');
+
+    const barsEl = document.getElementById('cat-bars');
+    barsEl.classList.remove('loading');
+    barsEl.innerHTML = cats.map(c => {
+      const myVal = parseFloat(c.my);
+      const oppVal = parseFloat(c.opp);
+      const total = myVal + oppVal;
+      // TOV 等低值勝類別需要翻轉進度條：對手值越高，我方條越長
+      const pct = total > 0
+        ? (c.lower_is_better ? oppVal / total * 100 : myVal / total * 100).toFixed(1)
+        : 50;
+      const barClass = c.status === 'winning' ? 'win' : c.status === 'losing' ? 'lose' : 'tied';
+      const statusMap = { winning: 'win', losing: 'lose', tied: 'tied' };
+      const statusClass = `cat-status-${statusMap[c.status] || c.status}`;
+      return `
+        <div class="cat-row">
+          <div class="cat-label">
+            ${c.label}
+            ${c.lower_is_better ? '<span style="font-size:9px;color:var(--text-muted);margin-left:2px;">↓勝</span>' : ''}
+          </div>
+          <div class="cat-bar-wrap">
+            <div class="cat-bar ${barClass}" style="width:${pct}%"></div>
+          </div>
+          <div class="cat-my ${statusClass}">${c.my}</div>
+          <div class="cat-opp">${c.opp}</div>
+        </div>`;
+    }).join('');
+  } catch (error) {
+    console.error('loadMatchup error:', error);
+    const barsEl = document.getElementById('cat-bars');
+    barsEl.classList.remove('loading');
+    barsEl.innerHTML = '<div style="color:red;padding:20px;">載入對戰數據失敗</div>';
+  }
+}
+
+async function loadRoster() {
+  try {
+    const res = await fetch(`${API}/api/roster`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const players = await res.json();
+    const grid = document.getElementById('player-grid');
+    grid.classList.remove('loading');
+
+    const trendIcon = t => t === 'hot' ? '🔥' : t === 'cold' ? '❄️' : '➡️';
+    const trendLabel = t => t === 'hot' ? '狀態火熱' : t === 'cold' ? '狀態低迷' : '正常狀態';
+    const trendCls   = t => t === 'hot' ? 'trend-hot' : t === 'cold' ? 'trend-cold' : 'trend-neutral';
+
+    grid.innerHTML = players.map(p => {
+      const initials = p.name.split(' ').map(w => w[0]).join('').slice(0,2);
+      const statusPill = p.status === 'Out'
+        ? `<span class="status-pill status-out">OUT</span>`
+        : p.status === 'Questionable'
+        ? `<span class="status-pill status-questionable">Q</span>`
+        : '';
+      const injuryNote = p.injury
+        ? `<div class="injury-tooltip">⚠ ${p.injury}</div>` : '';
+      const cardCls = p.status === 'Out' ? 'out' : p.status === 'Questionable' ? 'questionable' : '';
+      const a = p.avg;
+      const rankColor = r => r <= 10 ? 'var(--green)' : r <= 30 ? 'var(--primary)' : 'var(--text-muted)';
+      const milestones = [a.dd2 > 0 ? `${a.dd2}DD` : null, a.td3 > 0 ? `${a.td3}TD` : null].filter(Boolean).join(' · ') || '';
+
+      return `
+      <div class="player-card ${cardCls}">
+        <div class="player-top">
+          <div>
+            <div class="player-name">${p.name} ${statusPill}</div>
+            <div class="player-meta">${p.team} · ${p.position} · ${a.min}分鐘</div>
+            ${injuryNote}
+          </div>
+          <div class="player-avatar">${initials}</div>
+        </div>
+
+        <div class="player-stats">
+          <div class="stat-item">
+            <div class="stat-val" style="color:${rankColor(a.ranks.pts)};">${a.pts}</div>
+            <div class="stat-key">PTS <span style="color:${rankColor(a.ranks.pts)};font-size:9px;">#${a.ranks.pts}</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-val" style="color:${rankColor(a.ranks.reb)};">${a.reb}</div>
+            <div class="stat-key">REB <span style="color:${rankColor(a.ranks.reb)};font-size:9px;">#${a.ranks.reb}</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-val" style="color:${rankColor(a.ranks.ast)};">${a.ast}</div>
+            <div class="stat-key">AST <span style="color:${rankColor(a.ranks.ast)};font-size:9px;">#${a.ranks.ast}</span></div>
+          </div>
+        </div>
+
+        <div class="fantasy-row">
+          <div>
+            <div style="font-size:10px;color:var(--text-muted);">Fantasy 積分</div>
+            <div class="fantasy-val">${a.fantasy_pts}</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="fantasy-rank">聯盟 <span style="color:${rankColor(a.ranks.fantasy_pts)};font-weight:700;">#${a.ranks.fantasy_pts}</span></div>
+            ${milestones ? `<div style="font-size:10px;color:var(--purple);">${milestones}</div>` : ''}
+            <div style="font-size:10px;color:${a.plus_minus >= 0 ? 'var(--green)' : 'var(--red)'};">+/- ${a.plus_minus}</div>
+          </div>
+        </div>
+
+        <div class="ext-stats">
+          <div class="ext-stat"><div class="ext-val">${a.threes}</div><div class="ext-key">3PM</div></div>
+          <div class="ext-stat"><div class="ext-val">${a.fg_pct?.toFixed(1) ?? a.fg3_pct?.toFixed(1) ?? '—'}%</div><div class="ext-key">FG%</div></div>
+          <div class="ext-stat"><div class="ext-val">${a.ft_pct}%</div><div class="ext-key">FT%</div></div>
+          <div class="ext-stat"><div class="ext-val">${a.stl}/${a.blk}</div><div class="ext-key">STL/BLK</div></div>
+        </div>
+
+        <div class="player-footer">
+          <span class="games-badge">本週 ${p.games_played}場 / 剩${p.games_remaining}場</span>
+          <span class="trend ${trendCls(p.trend)}">${trendIcon(p.trend)} ${trendLabel(p.trend)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (error) {
+    console.error('loadRoster error:', error);
+    const grid = document.getElementById('player-grid');
+    grid.classList.remove('loading');
+    grid.innerHTML = '<div style="color:red;padding:20px;">載入陣容數據失敗</div>';
+  }
+}
+
+async function loadFreeAgents() {
+  try {
+    const res = await fetch(`${API}/api/free-agents`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const agents = await res.json();
+    const grid = document.getElementById('fa-grid');
+
+    const recBadge = r => {
+      if (r === '強烈推薦') return 'badge-green';
+      if (r === '推薦') return 'badge-blue';
+      return 'badge-yellow';
+    };
+
+    grid.innerHTML = agents.map(fa => `
+      <div class="fa-card">
+        <div class="fa-top">
+          <div>
+            <div class="fa-name">${fa.name}</div>
+            <div class="fa-sub">${fa.team} · ${fa.position}</div>
+            <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span class="badge ${recBadge(fa.recommendation)}">${fa.recommendation}</span>
+              <span style="font-size:11px;color:var(--text-muted);">Add% ${fa.ownership}% <span style="color:var(--green);">${fa.add_trend}</span></span>
+              <span style="font-size:11px;color:var(--text-muted);">聯盟 Fantasy <span style="color:var(--primary);font-weight:700;">#${fa.rank_fantasy}</span></span>
+            </div>
+          </div>
+          <div class="fa-score">${fa.match_score}<small>配對分數</small></div>
+        </div>
+        <div class="fa-stats">
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.pts}</div><div class="sk">PTS</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.reb}</div><div class="sk">REB</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.ast}</div><div class="sk">AST</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.stl}</div><div class="sk">STL</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.threes}</div><div class="sk">3PM</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.fantasy_pts}</div><div class="sk">Fantasy</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg_7d.ft_pct}%</div><div class="sk">FT%</div></div>
+          <div class="fa-stat"><div class="sv" style="color:${fa.avg_7d.plus_minus >= 0 ? 'var(--green)' : 'var(--red)'};">${fa.avg_7d.plus_minus >= 0 ? '+' : ''}${fa.avg_7d.plus_minus}</div><div class="sk">+/-</div></div>
+        </div>
+        <div class="fa-reason">💡 ${fa.reason}</div>
+        <div class="fa-actions">
+          <button class="btn btn-primary">+ 加入陣容</button>
+          <button class="btn btn-outline">詳細數據</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('loadFreeAgents error:', error);
+    document.getElementById('fa-grid').innerHTML = '<div style="color:red;">Error loading free agents</div>';
+  }
+}
+
+async function loadLeague() {
+  const grid = document.getElementById('league-grid');
+  try {
+    const res = await fetch(`${API}/api/league/teams`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const teams = await res.json();
+
+    grid.classList.remove('loading');
+
+    if (!teams.length) {
+      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;">無法取得聯盟數據（請確認 Yahoo Token）</div>';
+      return;
+    }
+
+    // 依勝場數排序
+    teams.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+
+    document.getElementById('league-last-updated').textContent = `共 ${teams.length} 隊 · Yahoo Fantasy 真實數據`;
+
+    grid.innerHTML = teams.map((team, idx) => {
+      const myTeamClass = team.is_my_team ? 'my-team' : '';
+      const myBadge = team.is_my_team ? '<span class="badge badge-orange" style="margin-left:8px;font-size:10px;">我的隊伍</span>' : '';
+      const rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+
+      const playerRows = team.players.map(p => {
+        const s = p.stats;
+        return `
+          <div class="roster-player">
+            <div class="rp-pos">${p.position}</div>
+            <div>
+              <div class="rp-name">${p.name}</div>
+              <div class="rp-team">${p.nba_team || '—'}</div>
+            </div>
+            <div class="rp-stat">${s ? s.pts : '—'}</div>
+            <div class="rp-stat dim">${s ? s.reb : '—'}</div>
+            <div class="rp-stat dim">${s ? s.ast : '—'}</div>
+            <div class="rp-stat dim">${s ? s['3pm'] : '—'}</div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="team-card ${myTeamClass}">
+          <div class="team-header" onclick="toggleRoster(this)">
+            <div>
+              <div class="team-title">${rankBadge} ${team.name}${myBadge}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div class="team-record">
+                <span class="wins">${team.wins}W</span>
+                <span>-</span>
+                <span class="losses">${team.losses}L</span>
+                ${team.ties > 0 ? `<span>-${team.ties}T</span>` : ''}
+              </div>
+              <div class="team-toggle">▼</div>
+            </div>
+          </div>
+          <div class="team-roster">
+            <div class="roster-header">
+              <div></div><div>球員</div>
+              <div style="text-align:right;">PTS</div>
+              <div style="text-align:right;">REB</div>
+              <div style="text-align:right;">AST</div>
+              <div style="text-align:right;">3PM</div>
+            </div>
+            ${playerRows}
+          </div>
+        </div>`;
+    }).join('');
+
+    // 預設展開自己的隊伍
+    document.querySelectorAll('.team-card.my-team .team-header').forEach(h => toggleRoster(h));
+
+  } catch (error) {
+    console.error('loadLeague error:', error);
+    grid.classList.remove('loading');
+    grid.innerHTML = '<div style="color:var(--red);padding:20px;">載入聯盟數據失敗</div>';
+  }
+}
+
+function toggleRoster(headerEl) {
+  const roster = headerEl.nextElementSibling;
+  const toggle = headerEl.querySelector('.team-toggle');
+  const isOpen = roster.classList.contains('open');
+  roster.classList.toggle('open', !isOpen);
+  toggle.classList.toggle('open', !isOpen);
+}
+
+async function loadAI() {
+  try {
+    const res = await fetch(`${API}/api/ai-recommendations`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const recs = await res.json();
+    const list = document.getElementById('ai-list');
+
+    const icons = { high: '🚨', medium: '⚠️', low: '💡' };
+    const iconCls = { high: 'ai-icon-high', medium: 'ai-icon-medium', low: 'ai-icon-low' };
+    const actionBadge = { add: 'badge-green', warning: 'badge-yellow', schedule: 'badge-blue' };
+
+    list.innerHTML = recs.map(r => `
+      <div class="ai-card">
+        <div class="ai-icon ${iconCls[r.priority]}">${icons[r.priority]}</div>
+        <div class="ai-content">
+          <div class="ai-title">
+            ${r.player}
+            <span class="badge ${actionBadge[r.type]}" style="margin-left:8px;">${r.action}</span>
+          </div>
+          <div class="ai-body">${r.reason}</div>
+          ${r.drop_suggestion ? `<div class="ai-drop">Del ${r.drop_suggestion}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('loadAI error:', error);
+    document.getElementById('ai-list').innerHTML = '<div style="color:red;">Error loading AI recommendations</div>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

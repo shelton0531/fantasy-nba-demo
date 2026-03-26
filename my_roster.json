@@ -1,0 +1,179 @@
+{
+  "league_info": {
+    "name": "User's Fantasy League",
+    "season": "2025-26",
+    "league_type": "9-category",
+    "registered_at": "2026-03-26",
+    "roster_size": 16,
+    "last_updated": "2026-03-26"
+  },
+  "roster": [
+    {
+      "id": 1,
+      "name": "Kennedy Chandler",
+      "api_name": "Kennedy Chandler",
+      "team": "UTA",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 33.2 pts, 聯盟排名 #72"
+    },
+    {
+      "id": 2,
+      "name": "Tre Jones",
+      "api_name": "Tre Jones",
+      "team": "CHI",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 27.6 pts, 聯盟排名 #122"
+    },
+    {
+      "id": 3,
+      "name": "Deni Avdija",
+      "api_name": "Deni Avdija",
+      "team": "POR",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 42.7 pts, 聯盟排名 #17"
+    },
+    {
+      "id": 4,
+      "name": "Gui Santos",
+      "api_name": "Gui Santos",
+      "team": "GSW",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 18.4 pts, 聯盟排名 #248"
+    },
+    {
+      "id": 5,
+      "name": "LeBron James",
+      "api_name": "LeBron James",
+      "team": "LAL",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 40.6 pts, 聯盟排名 #25"
+    },
+    {
+      "id": 6,
+      "name": "P.J. Washington",
+      "api_name": "P.J. Washington",
+      "team": "DAL",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 30.0 pts, 聯盟排名 #103"
+    },
+    {
+      "id": 7,
+      "name": "Deandre Ayton",
+      "api_name": "Deandre Ayton",
+      "team": "LAL",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 26.9 pts, 聯盟排名 #133"
+    },
+    {
+      "id": 8,
+      "name": "Amen Thompson",
+      "api_name": "Amen Thompson",
+      "team": "HOU",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 39.0 pts, 聯盟排名 #34"
+    },
+    {
+      "id": 9,
+      "name": "Ace Bailey",
+      "api_name": "Ace Bailey",
+      "team": "UTA",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 24.0 pts, 聯盟排名 #160"
+    },
+    {
+      "id": 10,
+      "name": "Paul George",
+      "api_name": "Paul George",
+      "team": "PHI",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 32.0 pts, 聯盟排名 #81"
+    },
+    {
+      "id": 11,
+      "name": "Bobby Portis",
+      "api_name": "Bobby Portis",
+      "team": "MIL",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 25.1 pts, 聯盟排名 #150"
+    },
+    {
+      "id": 12,
+      "name": "Josh Hart",
+      "api_name": "Josh Hart",
+      "team": "NYK",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 31.0 pts, 聯盟排名 #89"
+    },
+    {
+      "id": 13,
+      "name": "DeMar DeRozan",
+      "api_name": "DeMar DeRozan",
+      "team": "SAC",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 30.8 pts, 聯盟排名 #93"
+    },
+    {
+      "id": 14,
+      "name": "Shaedon Sharpe",
+      "api_name": "Shaedon Sharpe",
+      "team": "POR",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 32.2 pts, 聯盟排名 #79"
+    },
+    {
+      "id": 15,
+      "name": "Isaiah Collier",
+      "api_name": "Isaiah Collier",
+      "team": "UTA",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 27.3 pts, 聯盟排名 #124"
+    },
+    {
+      "id": 16,
+      "name": "Russell Westbrook",
+      "api_name": "Russell Westbrook",
+      "team": "SAC",
+      "position": "—",
+      "status": "Active",
+      "notes": "整季 Fantasy 32.9 pts, 聯盟排名 #73"
+    }
+  ],
+  "summary": {
+    "active_players": 16,
+    "total_players": 16,
+    "total_fantasy_pts": 493.7,
+    "avg_fantasy_pts_per_player": 30.9,
+    "top_3": [
+      {
+        "name": "Deni Avdija",
+        "fantasy": 42.7,
+        "rank": 17
+      },
+      {
+        "name": "LeBron James",
+        "fantasy": 40.6,
+        "rank": 25
+      },
+      {
+        "name": "Amen Thompson",
+        "fantasy": 39.0,
+        "rank": 34
+      }
+    ]
+  }
+}

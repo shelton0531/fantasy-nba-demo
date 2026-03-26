@@ -1,0 +1,32 @@
+# ===== 敏感資料（絕對不能上傳）=====
+yahoo_token.json
+private.json
+*.pem
+certs/
+.env
+.env.*
+
+# ===== OAuth 暫存檔 =====
+_pkce_verifier.tmp
+_pkce_verifier_test.txt
+_auth_code.tmp
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ===== 日誌與快取 =====
+flask_test.log
+*.log
+cache/
+
+# ===== 系統 =====
+.DS_Store
+Thumbs.db
