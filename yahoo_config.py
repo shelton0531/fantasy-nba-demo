@@ -27,12 +27,12 @@ _token_override = None
 
 
 def load_token():
-    """從記憶體暫存、環境變數或 yahoo_token.json 載入完整 Token 資訊
+    """從記憶體暫存、檔案或環境變數載入 Token
 
     優先順序：
     1. _token_override（refresh 後的記憶體暫存）
-    2. YAHOO_TOKEN_JSON 環境變數（部署環境）
-    3. yahoo_token.json 本地檔案（開發環境）
+    2. yahoo_token.json 檔案（如比環境變數新則優先，支援 Railway Volume 自動刷新）
+    3. 環境變數（YAHOO_ACCESS_TOKEN / YAHOO_TOKEN_JSON）作為初始值備用
     """
     global _token_override
 
@@ -40,38 +40,44 @@ def load_token():
     if _token_override is not None:
         return _token_override
 
-    # 2a. 分開的環境變數（最穩定，避免 JSON 格式問題）
+    # 讀取環境變數 token（作為備用基準）
+    env_token = None
     access_token = os.environ.get('YAHOO_ACCESS_TOKEN')
-    refresh_token = os.environ.get('YAHOO_REFRESH_TOKEN')
-    if access_token and refresh_token:
-        return {
+    refresh_token_env = os.environ.get('YAHOO_REFRESH_TOKEN')
+    if access_token and refresh_token_env:
+        env_token = {
             'access_token': access_token,
-            'refresh_token': refresh_token,
+            'refresh_token': refresh_token_env,
             'expires_in': int(os.environ.get('YAHOO_TOKEN_EXPIRES_IN', 3600)),
             'created_at': int(os.environ.get('YAHOO_TOKEN_CREATED_AT', 0)),
             'token_type': 'bearer',
             'scope': None
         }
-
-    # 2b. 單一 JSON 環境變數（備用）
-    token_json = os.environ.get('YAHOO_TOKEN_JSON')
-    if token_json:
+    elif os.environ.get('YAHOO_TOKEN_JSON'):
         try:
-            return json.loads(token_json.strip())
-        except Exception as e:
-            print(f"警告：YAHOO_TOKEN_JSON 環境變數格式錯誤: {e}")
+            env_token = json.loads(os.environ.get('YAHOO_TOKEN_JSON').strip())
+        except Exception:
+            pass
 
-    # 3. 本地檔案（開發環境 / Railway Volume）
+    # 2. 檔案 token（TOKEN_DIR/yahoo_token.json）
     token_file = Path(os.environ.get('TOKEN_DIR', '.')) / 'yahoo_token.json'
-    if not token_file.exists():
-        return None
+    if token_file.exists():
+        try:
+            with open(token_file, 'r', encoding='utf-8') as f:
+                file_token = json.load(f)
+            # 若檔案比環境變數更新，優先使用檔案（自動刷新後的 token）
+            file_created = file_token.get('created_at', 0)
+            env_created = env_token.get('created_at', 0) if env_token else 0
+            if file_created >= env_created:
+                return file_token
+        except Exception as e:
+            print(f"警告：無法讀取 yahoo_token.json: {e}")
 
-    try:
-        with open(token_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"警告：無法讀取 yahoo_token.json: {e}")
-        return None
+    # 3. 環境變數備用
+    if env_token:
+        return env_token
+
+    return None
 
 def get_access_token():
     """取得有效的 Access Token"""
