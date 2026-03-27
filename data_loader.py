@@ -129,11 +129,14 @@ def get_category_leaders():
 
     return leaders
 
-def calculate_team_stats(roster_players, players_list):
+def calculate_team_stats(roster_players, players_list, use_totals=False):
     """
     Calculate aggregate stats for a roster of 16 players
-    Returns average stats per player for H2H categories
+    use_totals=True: SUM for counting stats (PTS/REB/AST/STL/BLK/3PM/TO), AVG for FG%/FT%
+    use_totals=False: AVG for all (used for weak category detection in FA recommendations)
     """
+    SUM_CATEGORIES = {'3pm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'}
+
     stats = {
         'fg_pct': [],
         'ft_pct': [],
@@ -158,11 +161,13 @@ def calculate_team_stats(roster_players, players_list):
             stats['blk'].append(player_data['BLK'])
             stats['to'].append(player_data['TOV'])
 
-    # Calculate averages
     result = {}
     for cat, values in stats.items():
         if values:
-            result[cat] = round(sum(values) / len(values), 2)
+            if use_totals and cat in SUM_CATEGORIES:
+                result[cat] = round(sum(values), 1)
+            else:
+                result[cat] = round(sum(values) / len(values), 2)
         else:
             result[cat] = 0
 
@@ -213,7 +218,7 @@ def calculate_h2h_matchup(period='season'):
             user_players.append(p_data)
             user_names.append(r_player['name'])
 
-    user_stats = calculate_team_stats(user_players, players_list)
+    user_stats = calculate_team_stats(user_players, players_list, use_totals=True)
 
     # 嘗試從 Yahoo API 取得真實對手數據
     opponent_name = 'Computer Opponent'
@@ -238,7 +243,7 @@ def calculate_h2h_matchup(period='season'):
     # 若 Yahoo API 失敗，使用模擬對手
     if not is_real_data:
         opponent_players = generate_opponent_roster(user_names)
-        opponent_stats = calculate_team_stats(opponent_players, players_list)
+        opponent_stats = calculate_team_stats(opponent_players, players_list, use_totals=True)
     else:
         # Yahoo API 欄位名稱對應到 categories 使用的 key
         # yahoo: tov→to, threepm→3pm
@@ -314,7 +319,8 @@ def calculate_h2h_matchup(period='season'):
 
 def get_free_agent_recommendations(limit=5):
     """
-    Recommend free agents based on user roster deficiencies
+    Recommend free agents based on user roster deficiencies.
+    Uses all league team rosters to determine true free agents.
     """
     data = load_players_data()
     all_players = data['season']['players']
@@ -331,17 +337,28 @@ def get_free_agent_recommendations(limit=5):
 
     user_stats = calculate_team_stats(user_players, all_players)
 
-    # Find weakest categories
+    # Find weakest categories (use averages for comparison)
     weak_cats = sorted(user_stats.items(), key=lambda x: x[1])[:3]
     weak_keys = [cat[0] for cat in weak_cats]
 
-    # Find best available players not in roster (normalized comparison)
-    user_names_norm = [normalize(n) for n in user_names]
+    # Build rostered names set from ALL league teams (not just user's roster)
+    try:
+        from yahoo_api import get_all_teams_with_rosters
+        all_teams = get_all_teams_with_rosters()
+        rostered_names_norm = set()
+        for team in all_teams:
+            for player in team.get('players', []):
+                rostered_names_norm.add(normalize(player['name']))
+        print(f"[FA] 取得全聯盟陣容：{len(rostered_names_norm)} 位球員已被選走")
+    except Exception as e:
+        print(f"[FA] Yahoo API 失敗，僅排除自己陣容: {e}")
+        rostered_names_norm = {normalize(n) for n in user_names}
+
     candidates = []
 
     for player in all_players:
         if (player['GP'] > 10 and
-            normalize(player['PLAYER_NAME']) not in user_names_norm):
+            normalize(player['PLAYER_NAME']) not in rostered_names_norm):
             score = 0
             if 'pts' in weak_keys:
                 score += player['PTS'] * 0.5
@@ -396,11 +413,15 @@ def get_league_teams():
         from yahoo_api import get_all_teams_with_rosters, get_league_standings
         teams = get_all_teams_with_rosters()
         standings = get_league_standings()
+        print(f"[data_loader] 取得聯盟陣容: {len(teams)} 隊，排名: {len(standings)} 隊")
     except Exception as e:
         print(f"[data_loader] 無法取得聯盟陣容: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
     if not teams:
+        print(f"[data_loader] 警告: teams 為空，standings = {standings}")
         return []
 
     data = load_players_data()

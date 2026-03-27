@@ -99,11 +99,16 @@
 
     /* ── Nav ── */
     nav {
-      background: var(--surface);
+      background: rgba(22,27,34,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       display: flex;
       gap: 4px;
       padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
     .nav-btn {
       padding: 12px 16px;
@@ -183,9 +188,12 @@
       grid-template-columns: 60px 1fr 70px 70px;
       align-items: center;
       gap: 12px;
-      padding: 8px 0;
+      padding: 8px 6px;
       border-bottom: 1px solid var(--border);
+      border-radius: 6px;
+      transition: background 0.15s;
     }
+    .cat-row:hover { background: var(--surface2); }
     .cat-row:last-child { border-bottom: none; }
     .cat-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
     .cat-bar-wrap { position: relative; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
@@ -210,10 +218,21 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 14px;
-      transition: border-color 0.15s;
+      padding-top: 17px;
+      transition: border-color 0.15s, transform 0.15s;
       cursor: pointer;
+      position: relative;
+      overflow: hidden;
     }
-    .player-card:hover { border-color: var(--primary); }
+    .player-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--card-accent, var(--border));
+      border-radius: 10px 10px 0 0;
+    }
+    .player-card:hover { border-color: var(--primary); transform: translateY(-1px); }
     .player-card.out { border-color: rgba(239,68,68,.4); }
     .player-card.questionable { border-color: rgba(245,158,11,.4); }
     .player-top {
@@ -376,7 +395,8 @@
 
     /* ── Tabs ── */
     .view { display: none; }
-    .view.active { display: block; }
+    .view.active { display: block; opacity: 0; }
+    .view.active.fade-in { opacity: 1; transition: opacity 0.2s ease; }
 
     /* ── Spinner ── */
     .loading {
@@ -544,7 +564,7 @@
       <div class="section-header">
         <span class="section-title">各項目詳細比較</span>
         <div class="section-line"></div>
-        <span style="font-size:12px;color:var(--text-muted);">我方 vs 對手</span>
+        <span style="font-size:11px;color:var(--text-muted);">FG%/FT% 為平均值，其餘為本週累計</span>
       </div>
       <div class="card">
         <div id="cat-bars" class="loading">載入中...</div>
@@ -606,14 +626,20 @@
 const API = '';
 
 function showView(name, evt) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active', 'fade-in'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('view-' + name).classList.add('active');
+  const el = document.getElementById('view-' + name);
+  el.classList.add('active');
+  requestAnimationFrame(() => el.classList.add('fade-in'));
   if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
 }
 
 // ── Init ──
 async function init() {
+  // Trigger fade-in on initial active view
+  const initialView = document.querySelector('.view.active');
+  if (initialView) requestAnimationFrame(() => initialView.classList.add('fade-in'));
+
   try {
     const results = await Promise.allSettled([
       loadTicker(),
@@ -749,9 +775,10 @@ async function loadRoster() {
       const a = p.avg;
       const rankColor = r => r <= 10 ? 'var(--green)' : r <= 30 ? 'var(--primary)' : 'var(--text-muted)';
       const milestones = [a.dd2 > 0 ? `${a.dd2}DD` : null, a.td3 > 0 ? `${a.td3}TD` : null].filter(Boolean).join(' · ') || '';
+      const cardAccent = a.ranks.fantasy_pts <= 50 ? 'var(--green)' : a.ranks.fantasy_pts <= 100 ? 'var(--primary)' : 'var(--border)';
 
       return `
-      <div class="player-card ${cardCls}">
+      <div class="player-card ${cardCls}" style="--card-accent:${cardAccent}">
         <div class="player-top">
           <div>
             <div class="player-name">${p.name} ${statusPill}</div>
@@ -865,20 +892,24 @@ async function loadLeague() {
     const res = await fetch(`${API}/api/league/teams`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const teams = await res.json();
+    console.log('[loadLeague] 成功取得:', teams.length, '隊');
 
     grid.classList.remove('loading');
 
     if (!teams.length) {
-      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;">無法取得聯盟數據（請確認 Yahoo Token）</div>';
+      console.error('[loadLeague] teams 為空陣列');
+      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;">無法取得聯盟數據（請確認 Yahoo Token）<br><small style="display:block;margin-top:8px;">檢查 Console 查看詳細錯誤</small></div>';
       return;
     }
+    console.log('[loadLeague] 第一隊:', teams[0].name);
 
     // 依勝場數排序
     teams.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
 
     document.getElementById('league-last-updated').textContent = `共 ${teams.length} 隊 · Yahoo Fantasy 真實數據`;
+    console.log('[loadLeague] 開始渲染 HTML...');
 
-    grid.innerHTML = teams.map((team, idx) => {
+    const html = teams.map((team, idx) => {
       const myTeamClass = team.is_my_team ? 'my-team' : '';
       const myBadge = team.is_my_team ? '<span class="badge badge-orange" style="margin-left:8px;font-size:10px;">我的隊伍</span>' : '';
       const rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
@@ -927,6 +958,10 @@ async function loadLeague() {
           </div>
         </div>`;
     }).join('');
+
+    console.log('[loadLeague] HTML 長度:', html.length);
+    grid.innerHTML = html;
+    console.log('[loadLeague] 渲染完成，grid 元素:', grid.children.length, '個 team-card');
 
     // 預設展開自己的隊伍
     document.querySelectorAll('.team-card.my-team .team-header').forEach(h => toggleRoster(h));
