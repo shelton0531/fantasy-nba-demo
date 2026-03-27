@@ -13,7 +13,7 @@ REDIRECT_URI = "https://localhost:8443/callback"
 
 # ===== 聯盟配置 =====
 LEAGUE_ID = 46147
-CURRENT_WEEK = 22
+CURRENT_WEEK = int(os.environ.get('CURRENT_WEEK', 22))
 USER_TEAM_ID = 2  # 您的隊伍 ID
 
 # ===== API 端點 =====
@@ -61,8 +61,8 @@ def load_token():
         except Exception as e:
             print(f"警告：YAHOO_TOKEN_JSON 環境變數格式錯誤: {e}")
 
-    # 3. 本地檔案（開發環境）
-    token_file = Path('yahoo_token.json')
+    # 3. 本地檔案（開發環境 / Railway Volume）
+    token_file = Path(os.environ.get('TOKEN_DIR', '.')) / 'yahoo_token.json'
     if not token_file.exists():
         return None
 
@@ -149,9 +149,9 @@ def refresh_access_token():
             print(f"[Token 續期] 部署環境請更新 YAHOO_TOKEN_JSON 環境變數為：")
             print(json.dumps(updated, ensure_ascii=False))
         else:
-            # 本地開發：寫入檔案
+            # 本地開發 / Railway Volume：寫入檔案
             _token_override = None  # 清除暫存，以檔案為準
-            with open(Path('yahoo_token.json'), 'w', encoding='utf-8') as f:
+            with open(Path(os.environ.get('TOKEN_DIR', '.')) / 'yahoo_token.json', 'w', encoding='utf-8') as f:
                 json.dump(updated, f, indent=2, ensure_ascii=False)
             print(f"[Token 續期] 成功，已寫入 yahoo_token.json")
 
