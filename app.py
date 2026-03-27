@@ -1,12 +1,13 @@
 import os
 import json
 from pathlib import Path
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from data_loader import (
     get_roster_with_stats,
     get_category_leaders,
     calculate_h2h_matchup,
     get_free_agent_recommendations,
+    get_all_free_agents,
     get_ai_recommendations,
     get_league_teams
 )
@@ -136,9 +137,12 @@ def news():
 
 @app.route("/api/free-agents")
 def free_agents():
-    """Get free agent recommendations based on real data"""
+    """Get all FA players with pagination and recommendation badges"""
+    offset = int(request.args.get('offset', 0))
+    limit  = int(request.args.get('limit', 30))
+    sort   = request.args.get('sort', 'rank')
     try:
-        return jsonify(get_free_agent_recommendations(5))
+        return jsonify(get_all_free_agents(offset, limit, sort))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

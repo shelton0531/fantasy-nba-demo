@@ -601,11 +601,25 @@
   <div class="view" id="view-freeagent">
     <section>
       <div class="section-header">
-        <span class="section-title">自由市場推薦</span>
+        <span class="section-title">自由市場</span>
         <div class="section-line"></div>
-        <span style="font-size:12px;color:var(--text-muted);">根據你的陣容缺口排序</span>
+        <span id="fa-total" style="font-size:12px;color:var(--text-muted);">載入中...</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <input id="fa-search" type="text" placeholder="搜尋球員名稱..."
+          style="flex:1;min-width:160px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+        <select id="fa-sort"
+          style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;cursor:pointer;">
+          <option value="rank">Fantasy 排名</option>
+          <option value="pts">得分</option>
+          <option value="reb">籃板</option>
+          <option value="ast">助攻</option>
+        </select>
       </div>
       <div class="grid-2" id="fa-grid"></div>
+      <div style="text-align:center;margin-top:16px;">
+        <button id="fa-load-more" class="btn btn-outline" style="display:none;padding:10px 32px;">載入更多</button>
+      </div>
     </section>
   </div>
 
@@ -836,55 +850,77 @@ async function loadRoster() {
   }
 }
 
-async function loadFreeAgents() {
+let faOffset = 0;
+const FA_LIMIT = 30;
+let faSort = 'rank';
+let faSearch = '';
+
+async function loadFreeAgents(reset = true) {
+  if (reset) {
+    faOffset = 0;
+    document.getElementById('fa-grid').innerHTML = '<div class="loading">載入中...</div>';
+  }
   try {
-    const res = await fetch(`${API}/api/free-agents`);
+    const res = await fetch(`${API}/api/free-agents?offset=${faOffset}&limit=${FA_LIMIT}&sort=${faSort}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const agents = await res.json();
+    const data = await res.json();
     const grid = document.getElementById('fa-grid');
 
-    const recBadge = r => {
-      if (r === '強烈推薦') return 'badge-green';
-      if (r === '推薦') return 'badge-blue';
-      return 'badge-yellow';
-    };
+    if (reset) grid.innerHTML = '';
 
-    grid.innerHTML = agents.map(fa => `
+    const filtered = faSearch
+      ? data.players.filter(p => p.name.toLowerCase().includes(faSearch.toLowerCase()))
+      : data.players;
+
+    grid.insertAdjacentHTML('beforeend', filtered.map(fa => `
       <div class="fa-card">
         <div class="fa-top">
           <div>
-            <div class="fa-name">${fa.name}</div>
+            <div class="fa-name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span>${fa.name}</span>
+              ${fa.recommended ? '<span class="badge badge-green" style="font-size:10px;padding:2px 6px;line-height:1.4;">推薦</span>' : ''}
+            </div>
             <div class="fa-sub">${fa.team} · ${fa.position}</div>
-            <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <span class="badge ${recBadge(fa.recommendation)}">${fa.recommendation}</span>
-              <span style="font-size:11px;color:var(--text-muted);">Add% ${fa.ownership}% <span style="color:var(--green);">${fa.add_trend}</span></span>
-              <span style="font-size:11px;color:var(--text-muted);">聯盟 Fantasy <span style="color:var(--primary);font-weight:700;">#${fa.rank_fantasy}</span></span>
+            <div style="margin-top:4px;">
+              <span style="font-size:11px;color:var(--text-muted);">Fantasy <span style="color:var(--primary);font-weight:700;">#${fa.rank_fantasy}</span></span>
             </div>
           </div>
-          <div class="fa-score">${fa.match_score}<small>配對分數</small></div>
         </div>
         <div class="fa-stats">
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.pts}</div><div class="sk">PTS</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.reb}</div><div class="sk">REB</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.ast}</div><div class="sk">AST</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.stl}</div><div class="sk">STL</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.threes}</div><div class="sk">3PM</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.fantasy_pts}</div><div class="sk">Fantasy</div></div>
-          <div class="fa-stat"><div class="sv">${fa.avg_7d.ft_pct}%</div><div class="sk">FT%</div></div>
-          <div class="fa-stat"><div class="sv" style="color:${fa.avg_7d.plus_minus >= 0 ? 'var(--green)' : 'var(--red)'};">${fa.avg_7d.plus_minus >= 0 ? '+' : ''}${fa.avg_7d.plus_minus}</div><div class="sk">+/-</div></div>
-        </div>
-        <div class="fa-reason">💡 ${fa.reason}</div>
-        <div class="fa-actions">
-          <button class="btn btn-primary">+ 加入陣容</button>
-          <button class="btn btn-outline">詳細數據</button>
+          <div class="fa-stat"><div class="sv">${fa.avg.pts}</div><div class="sk">PTS</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.reb}</div><div class="sk">REB</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.ast}</div><div class="sk">AST</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.stl}</div><div class="sk">STL</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.threes}</div><div class="sk">3PM</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.fg_pct}%</div><div class="sk">FG%</div></div>
+          <div class="fa-stat"><div class="sv">${fa.avg.ft_pct}%</div><div class="sk">FT%</div></div>
+          <div class="fa-stat"><div class="sv" style="color:${fa.avg.plus_minus>=0?'var(--green)':'var(--red)'};">${fa.avg.plus_minus>=0?'+':''}${fa.avg.plus_minus}</div><div class="sk">+/-</div></div>
         </div>
       </div>
-    `).join('');
+    `).join(''));
+
+    faOffset += FA_LIMIT;
+    document.getElementById('fa-total').textContent = `共 ${data.total} 位 FA`;
+    document.getElementById('fa-load-more').style.display = data.has_more ? 'inline-block' : 'none';
+
   } catch (error) {
     console.error('loadFreeAgents error:', error);
-    document.getElementById('fa-grid').innerHTML = '<div style="color:red;">Error loading free agents</div>';
+    document.getElementById('fa-grid').innerHTML = '<div style="color:var(--red);">載入失敗</div>';
   }
 }
+
+// 搜尋防抖
+let _faSearchTimer;
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('fa-search')?.addEventListener('input', e => {
+    clearTimeout(_faSearchTimer);
+    _faSearchTimer = setTimeout(() => { faSearch = e.target.value; loadFreeAgents(true); }, 300);
+  });
+  document.getElementById('fa-sort')?.addEventListener('change', e => {
+    faSort = e.target.value; loadFreeAgents(true);
+  });
+  document.getElementById('fa-load-more')?.addEventListener('click', () => loadFreeAgents(false));
+});
 
 async function loadLeague() {
   const grid = document.getElementById('league-grid');

@@ -404,6 +404,75 @@ def get_free_agent_recommendations(limit=5):
         for p in candidates[:limit]
     ]
 
+def get_all_free_agents(offset=0, limit=30, sort='rank'):
+    """
+    回傳所有 FA 球員（分頁），並標記推薦球員
+    sort: 'rank' | 'pts' | 'reb' | 'ast'
+    """
+    data = load_players_data()
+    all_players = data['season']['players']
+
+    # 取得全聯盟已選球員
+    try:
+        from yahoo_api import get_all_teams_with_rosters
+        all_teams = get_all_teams_with_rosters()
+        rostered = {normalize(p['name']) for t in all_teams for p in t.get('players', [])}
+    except Exception as e:
+        print(f"[FA] Yahoo 失敗，改用本地陣容: {e}")
+        rostered = {normalize(p['name']) for p in load_my_roster()['roster']}
+
+    # 取得推薦球員名單
+    try:
+        rec_names = {normalize(r['name']) for r in get_free_agent_recommendations(10)}
+    except Exception:
+        rec_names = set()
+
+    # 篩選 FA
+    fas = [
+        p for p in all_players
+        if p.get('GP', 0) > 10 and normalize(p['PLAYER_NAME']) not in rostered
+    ]
+
+    # 排序
+    sort_keys = {
+        'rank': lambda p: p.get('NBA_FANTASY_PTS_RANK', 9999),
+        'pts':  lambda p: -p.get('PTS', 0),
+        'reb':  lambda p: -p.get('REB', 0),
+        'ast':  lambda p: -p.get('AST', 0),
+    }
+    fas.sort(key=sort_keys.get(sort, sort_keys['rank']))
+
+    total = len(fas)
+    page = fas[offset: offset + limit]
+
+    return {
+        'total': total,
+        'offset': offset,
+        'limit': limit,
+        'has_more': (offset + limit) < total,
+        'players': [
+            {
+                'name': p['PLAYER_NAME'],
+                'team': p['TEAM_ABBREVIATION'],
+                'position': '—',
+                'rank_fantasy': int(p.get('NBA_FANTASY_PTS_RANK', 999)),
+                'recommended': normalize(p['PLAYER_NAME']) in rec_names,
+                'avg': {
+                    'pts':       round(p['PTS'], 1),
+                    'reb':       round(p['REB'], 1),
+                    'ast':       round(p['AST'], 1),
+                    'stl':       round(p['STL'], 1),
+                    'threes':    round(p['FG3M'], 1),
+                    'fg_pct':    round(p['FG_PCT'] * 100, 1),
+                    'ft_pct':    round(p['FT_PCT'] * 100, 1),
+                    'plus_minus': round(p['PLUS_MINUS'], 1),
+                }
+            }
+            for p in page
+        ]
+    }
+
+
 def get_league_teams():
     """
     取得全聯盟所有隊伍陣容，並對照 players_data.json 補充球員統計
