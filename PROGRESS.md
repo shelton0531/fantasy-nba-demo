@@ -1,7 +1,7 @@
 # 📊 Fantasy NBA 專案進度快照
 
-**最後更新：2026-03-27**
-**狀態：⚠️ 任務 7 部署中 — Railway Volume 掛載待確認**
+**最後更新：2026-03-27 (16:59 更新)**
+**狀態：🔄 任務 7 進行中 — Railway Volume Token 初始化方案已實施**
 
 ---
 
@@ -56,25 +56,42 @@
 **Railway 網址：** https://web-production-d742.up.railway.app
 **GitHub Repo：** https://github.com/shelton0531/fantasy-nba-demo
 
-**最新進度（2026-03-27）：**
-- ✅ 應用程式成功部署並運行
-- ✅ 前端頁面可存取
-- ✅ Yahoo API 本地連線驗證通過（token 自動 refresh 成功）
-- ✅ `yahoo_config.py` 改動完成：
-  - CURRENT_WEEK 環境變數化（無需 push code 改週次）
-  - Token 檔案路徑支援 TOKEN_DIR（為 Volume 掛載做準備）
-- ✅ Commit `b4f096a` 已 push，Railway 自動 redeploy
-- ⏳ Railway Volume 掛載待完成（用戶操作 Dashboard）
+**最新進度（2026-03-27 16:59 更新）：**
 
-**待做（用戶在 Railway Dashboard）：**
-1. Volumes → Add Volume → Mount Path: `/data`
-2. Environment Variables 新增：`TOKEN_DIR=/data`, `CURRENT_WEEK=22`
-3. 上傳 `yahoo_token.json` 到 Volume `/data/`（方式 A: 腳本 / 方式 B: UI 手動）
-4. web service 手動 Redeploy
+#### ✅ 本地 Token 刷新完成
+- Token 自動刷新成功（flask run 觸發 yahoo_api.py refresh_token）
+- 新 token created_at: `1774601972`（2026-03-27 16:59:32）
+- 已存儲於本地 `yahoo_token.json`
 
-**解法說明：**
-使用 Railway Persistent Volume，token auto-refresh 會自動寫回 `/data/yahoo_token.json`，
-完全無需手動更新環境變數，永遠保持最新狀態。
+#### ✅ Railway Volume 初始化方案已實施
+- 修改 `app.py` 添加 `initialize_token_file()` 函數
+- 應用啟動時自動從環境變數初始化 token 檔案到 `/data/yahoo_token.json`
+- Commit `f0e230d` 已推送，Railway 自動重新部署中
+
+#### ✅ Railway Infrastructure 設定完成
+- Volume 建立：Mount Path `/data` ✓
+- 環境變數更新：`TOKEN_DIR=/data`, `CURRENT_WEEK=22` ✓
+
+#### ⏳ 待完成（立即操作）
+1. **Railway Dashboard → Variables** 更新舊 token 為新值：
+   - `YAHOO_ACCESS_TOKEN` = (見下方新值)
+   - `YAHOO_REFRESH_TOKEN` = (見下方新值)
+2. **點擊 Redeploy**
+3. 等待 1-2 分鐘部署完成
+4. 驗證 `/api/token-status` 返回 `"status":"ok"`
+
+**新 Token 值：**
+```
+YAHOO_ACCESS_TOKEN = m3PbQKOduA13yHOSrS.FpLtrdt1wqX4oj1kDAEGK64CYqRgyVVbgqjKtZpUd8QQtVHmdkGAGlI6BLpLsZ_GIwLpjT_CfW0tdWh47VP7zmqyizY3oMkOwnQzmw9izowtZ.BTwVdmlLjrgeA3jeof5c3HAfDYiLVIEpr_1.g.1URennuCYNdRuVt_kBYMaP50.mv8QBuB9MIYEtcreGYsaEgFqjP2img9FL50KPRQow85zz4Biyw00YT5ID2ARH6NI_5e22eKfmryb96NRqdD4Wf4jO9fUIcvRaUzjxFGWS5fRftO5DiqhlyPJmq2xQeq0fCOzPccuuQLs_KyElVK4vg2wrK6Xx3gv3jP3ZzpUWPVmZXWdYqu_qrJ8XaaMBBtkkuwo7tkGkU.YYaI6rXabzvpcR4kbEvuWMO9uqRm6bGLAYxkxCCiG4aUO0qYx2_Fiy17KJSjpGUtfv8.XTu7jLSj7alXAoC9DnJiqPD9NcuKRlA4PbQc0e1LKq.UP5SxMUZ6VzLjxHulPJ3Sh9eTzJUnGqXQmQc1Zd1_o5CPhsm3AZd8eF80LVKiZfEaCyoa.k9iwutOwpmJ2klOBmyVAm011WA8GlUGrse8O.b0ehinhpQLIRQA1bnDDbjUtgSze1hFnIjs5EGGqRGZkZsudEdvRLCywAl.o5L08ltpNVA5kN2PPDQA.PHhyjgX0IMvwMsBokwOtm7q76_B8LkavDlHOTNn21g8MKzhep_MLbiF4UJgfx7eedKXdiflcwQ861CUMmGtI_5Ci5TpJ8wLQO2bOKhH86WejQ0QJ165Itg_B8RbljKM2eJ_jxgEw9CCMzvxFsNgVbYXLME.pN6R0wcwuo7.YhF8aRYqhj45op2iyfVx5NlE.E_zUPyXB5Joa6C1NERD4TaG6eQMwsyNGTiPrWIqRabDMA2lJxfxDvTp4x.azEw_KTWLKvecbZnl_aR9mOFz6uf9Jd9kBPPUjlA--
+
+YAHOO_REFRESH_TOKEN = ACrExGl9kKScnLYTydlbO0mvZypb~001~eiHrfW_5NOp21s47C5hzCo_5mJsL648DUQ--
+```
+
+**部署完後自動機制：**
+1. 應用啟動時從新環境變數初始化 token 到 `/data/yahoo_token.json`
+2. 每次呼叫 Yahoo API 自動檢查 token 過期
+3. Token 過期自動刷新並寫入 `/data/yahoo_token.json`（Volume 持久化）
+4. 下次部署應用，token 仍然存在 ✨ 完全自動，無需手動更新
 
 ---
 
