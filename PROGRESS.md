@@ -1,7 +1,7 @@
 # 📊 Fantasy NBA 專案進度快照
 
-**最後更新：2026-03-26**
-**狀態：⚠️ 任務 7 部署中 — Railway 環境變數設定問題排查**
+**最後更新：2026-03-27**
+**狀態：⚠️ 任務 7 部署中 — Railway Volume 掛載待確認**
 
 ---
 
@@ -51,30 +51,30 @@
 
 ---
 
-## ⚠️ 進行中：任務 7 — Railway 部署
+## ⚠️ 進行中：任務 7 — Railway 部署（Token 持久化）
 
 **Railway 網址：** https://web-production-d742.up.railway.app
 **GitHub Repo：** https://github.com/shelton0531/fantasy-nba-demo
 
-**目前狀態：**
+**最新進度（2026-03-27）：**
 - ✅ 應用程式成功部署並運行
 - ✅ 前端頁面可存取
-- ✅ `source: env_individual` — 確認個別環境變數有被讀取
-- ⚠️ Token 過期問題 — `YAHOO_TOKEN_CREATED_AT` 未正確更新
+- ✅ Yahoo API 本地連線驗證通過（token 自動 refresh 成功）
+- ✅ `yahoo_config.py` 改動完成：
+  - CURRENT_WEEK 環境變數化（無需 push code 改週次）
+  - Token 檔案路徑支援 TOKEN_DIR（為 Volume 掛載做準備）
+- ✅ Commit `b4f096a` 已 push，Railway 自動 redeploy
+- ⏳ Railway Volume 掛載待完成（用戶操作 Dashboard）
 
-**Railway 需設定的環境變數（4個）：**
-```
-YAHOO_ACCESS_TOKEN=<access_token 值>
-YAHOO_REFRESH_TOKEN=ACrExGl9kKScnLYTydlbO0mvZypb~001~eiHrfW_5NOp21s47C5hzCo_5mJsL648DUQ--
-YAHOO_TOKEN_EXPIRES_IN=3600
-YAHOO_TOKEN_CREATED_AT=<created_at Unix timestamp>
-```
+**待做（用戶在 Railway Dashboard）：**
+1. Volumes → Add Volume → Mount Path: `/data`
+2. Environment Variables 新增：`TOKEN_DIR=/data`, `CURRENT_WEEK=22`
+3. 上傳 `yahoo_token.json` 到 Volume `/data/`（方式 A: 腳本 / 方式 B: UI 手動）
+4. web service 手動 Redeploy
 
-**問題根因：** Token 每小時過期，目前每次都需手動刷新後更新 Railway 環境變數。長遠解法是接資料庫或 Railway Volume。
-
-**排查紀錄：**
-- `YAHOO_TOKEN_JSON`（整體 JSON）→ 失敗（Railway 貼入多行 JSON 被截斷）
-- 改用 4 個個別環境變數 → 成功讀取，但 `YAHOO_TOKEN_CREATED_AT` 更新有延遲問題
+**解法說明：**
+使用 Railway Persistent Volume，token auto-refresh 會自動寫回 `/data/yahoo_token.json`，
+完全無需手動更新環境變數，永遠保持最新狀態。
 
 ---
 
@@ -109,27 +109,28 @@ YAHOO_TOKEN_CREATED_AT=<created_at Unix timestamp>
 
 ```bash
 # 本地啟動
-cd "C:\Vibe coding\fantasy-nba-demo"
+cd "D:\Vibe coding\fantasy-nba-demo"
 python3 -m flask run --port 5000
 
-# 刷新 token（每小時執行一次）
-python3 -c "from yahoo_config import refresh_access_token; refresh_access_token()"
+# 取得 yahoo_token.json 內容（上傳到 Railway Volume）
+python3 -c "import json; print(json.dumps(json.load(open('yahoo_token.json')), indent=2))"
 
-# 取得最新環境變數值
-python3 -c "
-import json, time
-t = json.load(open('yahoo_token.json'))
-print(f'YAHOO_ACCESS_TOKEN={t[\"access_token\"]}')
-print(f'YAHOO_TOKEN_CREATED_AT={t[\"created_at\"]}')
-"
+# 本地測試 Yahoo API 連線
+python3 yahoo_api.py
 
-# 驗證部署
+# 驗證 Railway 部署
 curl https://web-production-d742.up.railway.app/api/token-status
 curl https://web-production-d742.up.railway.app/api/matchup
+
+# 部署 token 到 Railway（需先 npm install -g @railway/cli && railway login）
+python3 deploy_token.py
 ```
 
 ---
 
-**最後測試：** 2026-03-26
-- 本地：✅ Token 正常，Yahoo API 真實數據運作中
-- Railway：⚠️ 環境變數 YAHOO_TOKEN_CREATED_AT 更新延遲，token 顯示過期
+**最後測試：** 2026-03-27
+- 本地：✅ Token 自動 refresh 成功，Yahoo API 真實數據運作完美
+  - 本週對手：葉來葉好玩葉董好好玩
+  - 我的統計：FG% 50.0%, FT% 77.1%, 3PM 24, PTS 405, REB 136, AST 106, STL 30, BLK 14, TOV 36
+  - 對手統計：FG% 49.2%, FT% 78.9%, 3PM 43, PTS 363, REB 137, AST 117, STL 25, BLK 16, TOV 52
+- Railway：⏳ 程式碼已部署，Volume 掛載待完成
