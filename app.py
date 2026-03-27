@@ -1,4 +1,6 @@
 import os
+import json
+from pathlib import Path
 from flask import Flask, jsonify, render_template
 from data_loader import (
     get_roster_with_stats,
@@ -10,6 +12,39 @@ from data_loader import (
 )
 
 app = Flask(__name__)
+
+# 初始化：如果 TOKEN_DIR=/data (Railway Volume)，確保初始 token 檔案存在
+def initialize_token_file():
+    """On Railway: copy initial token from env vars to /data/yahoo_token.json if not exists"""
+    token_dir = os.environ.get('TOKEN_DIR', '.')
+    token_path = Path(token_dir) / 'yahoo_token.json'
+
+    # 如果 token 檔案已存在，跳過
+    if token_path.exists():
+        return
+
+    # 嘗試從環境變數重建 token 檔案
+    access_token = os.environ.get('YAHOO_ACCESS_TOKEN')
+    refresh_token = os.environ.get('YAHOO_REFRESH_TOKEN')
+
+    if access_token and refresh_token:
+        try:
+            token_data = {
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'expires_in': 3600,
+                'token_type': 'bearer',
+                'scope': None,
+                'created_at': int(__import__('time').time())
+            }
+            Path(token_dir).mkdir(parents=True, exist_ok=True)
+            with open(token_path, 'w', encoding='utf-8') as f:
+                json.dump(token_data, f, indent=2, ensure_ascii=False)
+            print(f"[初始化] Token 檔案已建立: {token_path}")
+        except Exception as e:
+            print(f"[警告] 無法建立 token 檔案: {e}")
+
+initialize_token_file()
 
 @app.route("/")
 def index():
