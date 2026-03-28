@@ -31,6 +31,75 @@ TAIPEI_TZ = pytz.timezone("Asia/Taipei")
 CACHE_DIR = Path("cache")
 
 # ─────────────────────────────────────────────
+# 即時陣容（Yahoo API + 每日快取）
+# ─────────────────────────────────────────────
+
+def get_live_roster_cached() -> list[dict]:
+    """
+    取得即時陣容，優先讀今日快取，否則從 Yahoo API 抓取。
+    每位球員回傳：{name, position, status, injury_note, player_key, team}
+    失敗時 fallback 到 my_roster.json。
+    """
+    cache_path = CACHE_DIR / f"roster_{date.today().isoformat()}.json"
+
+    # 讀今日快取
+    if cache_path.exists():
+        try:
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    # 從 Yahoo API 抓取
+    try:
+        from yahoo_api import get_my_roster_with_keys
+        from data_loader import load_players_data
+
+        yahoo_players = get_my_roster_with_keys()
+        if not yahoo_players:
+            raise ValueError("Yahoo 回傳空陣容")
+
+        # 從 players_data.json 補充球隊縮寫
+        season_players = load_players_data().get("season", {}).get("players", [])
+        team_map = {p["PLAYER_NAME"].lower(): p["TEAM_ABBREVIATION"] for p in season_players}
+
+        roster = [
+            {
+                "name":         p["name"],
+                "position":     p["position"],
+                "status":       p["status"],
+                "injury_note":  p["injury_note"],
+                "player_key":   p["player_key"],
+                "team":         team_map.get(p["name"].lower(), "—"),
+            }
+            for p in yahoo_players
+        ]
+
+        CACHE_DIR.mkdir(exist_ok=True)
+        cache_path.write_text(json.dumps(roster, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"[Roster] 即時陣容已更新：{len(roster)} 位球員")
+        return roster
+
+    except Exception as e:
+        logger.warning(f"[Roster] Yahoo 抓取失敗，改用 my_roster.json：{e}")
+        try:
+            with open("my_roster.json", encoding="utf-8") as f:
+                roster_data = json.load(f)
+            return [
+                {
+                    "name":        p["name"],
+                    "position":    p.get("position", "—"),
+                    "status":      p.get("status", "Active"),
+                    "injury_note": "",
+                    "player_key":  "",
+                    "team":        p.get("team", "—"),
+                }
+                for p in roster_data.get("roster", [])
+            ]
+        except Exception:
+            return []
+
+
+# ─────────────────────────────────────────────
 # Inline Keyboard 工廠
 # ─────────────────────────────────────────────
 
@@ -70,13 +139,7 @@ def back_kb(target="back_main"):
 
 def player_list_kb(period: str) -> InlineKeyboardMarkup:
     """球員選擇鍵盤（2人一排）。period: '7d' | '14d' | 'rpt'"""
-    import json as _json
-    try:
-        with open("my_roster.json", encoding="utf-8") as f:
-            roster = _json.load(f)
-        players = roster.get("roster", [])
-    except Exception:
-        players = []
+    players = get_live_roster_cached()
     buttons = []
     row = []
     for i, p in enumerate(players):
@@ -348,8 +411,7 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
         from yahoo_api import get_my_roster_with_keys
         import json as _json
 
-        with open("my_roster.json", encoding="utf-8") as f:
-            all_players = _json.load(f).get("roster", [])
+        all_players = get_live_roster_cached()
         if player_idx >= len(all_players):
             return
 
@@ -740,9 +802,7 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE,
         games = get_today_games()
 
         if mine_only:
-            with open("my_roster.json", encoding="utf-8") as f:
-                roster = _json.load(f)
-            my_teams = {p["team"] for p in roster.get("roster", [])}
+            my_teams = {p["team"] for p in get_live_roster_cached()}
             txt = format_schedule_mine(games, my_teams)
         else:
             txt = format_schedule_all(games)
@@ -807,11 +867,8 @@ async def push_daily_report(context: ContextTypes.DEFAULT_TYPE):
         games = get_today_games()
         today_teams = {g["home_abbr"] for g in games} | {g["away_abbr"] for g in games}
 
-        with open("my_roster.json", encoding="utf-8") as f:
-            roster = _json.load(f)
-
         playing, resting = [], []
-        for p in roster.get("roster", []):
+        for p in get_live_roster_cached():
             if p["team"] in today_teams:
                 # 找比賽資訊
                 opp_game = next(
