@@ -117,6 +117,7 @@ def roster_menu_kb():
         [InlineKeyboardButton("7天均值", callback_data="roster_7d"),
          InlineKeyboardButton("14天均值", callback_data="roster_14d")],
         [InlineKeyboardButton("📅 今日分析", callback_data="roster_report")],
+        [InlineKeyboardButton("🏥 傷兵概覽", callback_data="roster_injuries")],
         [InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")],
     ])
 
@@ -228,9 +229,11 @@ def format_matchup(m: dict) -> str:
 
     opp_name = m.get("opponent", "對手")
     real = "📡 Yahoo 真實數據" if m.get("is_real_data") else "⚠️ 模擬數據"
+    week_num = os.environ.get("CURRENT_WEEK", "")
+    week_label = f"第 {week_num} 週  " if week_num else ""
 
     lines = [
-        f"⚔️ <b>本週對戰</b>",
+        f"⚔️ <b>本週對戰</b>  {week_label}",
         f"你 vs <b>{opp_name}</b>",
         f"目前: <b>{wins}W – {losses}L – {ties}T</b>  {real}",
         "",
@@ -300,12 +303,44 @@ def format_standings(teams: list, standings: dict) -> str:
 # 格式化：今日賽程
 # ─────────────────────────────────────────────
 
+import re as _re
+
+def _et_to_tst(status_text: str) -> str:
+    """
+    將 NBA API 回傳的 ET 時間字串轉為台灣時間（UTC+8）。
+    僅處理尚未開賽的格式，如 "7:30 pm ET"。
+    已開賽（Q1/Final/…）直接回傳原文。
+    """
+    m = _re.match(r"(\d{1,2}):(\d{2})\s*(am|pm)\s*ET", status_text.strip(), _re.IGNORECASE)
+    if not m:
+        return status_text
+
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    meridiem = m.group(3).lower()
+
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+
+    # 3月（EDT）= UTC-4；台灣 = UTC+8，差 12 小時
+    tst_hour = (hour + 12) % 24
+    next_day = (hour + 12) >= 24
+    tst_str  = f"{tst_hour:02d}:{minute:02d}"
+    if next_day:
+        tst_str += " 隔日"
+
+    return f"{status_text}（台灣 {tst_str}）"
+
+
 def format_schedule_all(games: list) -> str:
     if not games:
         return "📅 <b>今日賽程</b>\n\n今日無 NBA 比賽"
     lines = [f"📅 <b>今日賽程</b>（共 {len(games)} 場）\n"]
     for g in games:
-        lines.append(f"🏀 {g['away_abbr']} @ {g['home_abbr']}  {g['status']}")
+        time_str = _et_to_tst(g["status"])
+        lines.append(f"🏀 {g['away_abbr']} @ {g['home_abbr']}  {time_str}")
     return "\n".join(lines)
 
 def format_schedule_mine(games: list, my_teams: set) -> str:
@@ -315,7 +350,8 @@ def format_schedule_mine(games: list, my_teams: set) -> str:
         lines.append("今日你的球員均無比賽")
     else:
         for g in my_games:
-            lines.append(f"🟢 {g['away_abbr']} @ {g['home_abbr']}  {g['status']}")
+            time_str = _et_to_tst(g["status"])
+            lines.append(f"🟢 {g['away_abbr']} @ {g['home_abbr']}  {time_str}")
     return "\n".join(lines)
 
 # ─────────────────────────────────────────────
@@ -516,6 +552,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_kb(),
     )
 
+async def refresh_roster(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """強制刷新今日陣容快取（/refresh）"""
+    from datetime import date
+    cache_path = CACHE_DIR / f"roster_{date.today().isoformat()}.json"
+    deleted = False
+    if cache_path.exists():
+        cache_path.unlink()
+        deleted = True
+    await update.message.reply_text("⏳ 重新抓取陣容中...", parse_mode="HTML")
+    try:
+        roster = get_live_roster_cached()
+        names = [p["name"] for p in roster]
+        await update.message.reply_text(
+            f"✅ 陣容已更新（{len(roster)} 人）\n" + "\n".join(f"  · {n}" for n in names),
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(),
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ 更新失敗：{e}", parse_mode="HTML")
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -570,6 +626,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📅 <b>今日分析</b>\n\n請選擇球員：",
             parse_mode="HTML", reply_markup=player_list_kb("rpt")
         )
+
+    elif data == "roster_injuries":
+        await query.edit_message_text("⏳ 載入傷兵狀態...", parse_mode="HTML")
+        await show_injuries(update, context, edit=True)
 
     # 球員名單（返回用）
     elif data in ("pl_7d", "pl_14d", "pl_rpt"):
@@ -661,6 +721,53 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 # 功能實作
 # ─────────────────────────────────────────────
+
+async def show_injuries(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
+    """傷兵概覽：列出所有非 Active 狀態球員"""
+    try:
+        players = get_live_roster_cached()
+        red, yellow, healthy = [], [], []
+        for p in players:
+            st = (p.get("status") or "").upper()
+            inj = p.get("injury_note", "")
+            name = p["name"]
+            team = p.get("team", "—")
+            pos  = p.get("position", "—")
+            inj_suffix = f" — {inj}" if inj else ""
+            if st in ("INJ", "OUT", "NA"):
+                red.append(f"🔴 <b>{name}</b>  {team} · {pos}{inj_suffix}")
+            elif st in ("Q", "QUESTIONABLE", "DTD"):
+                yellow.append(f"🟡 <b>{name}</b>  {team} · {pos}{inj_suffix}")
+            else:
+                healthy.append(name)
+
+        lines = ["🏥 <b>傷兵概覽</b>\n"]
+        if red:
+            lines.append("⛔ 確定缺陣：")
+            lines.extend(red)
+            lines.append("")
+        if yellow:
+            lines.append("⚠️ 狀態存疑：")
+            lines.extend(yellow)
+            lines.append("")
+        if not red and not yellow:
+            lines.append("✅ 目前無傷兵，全員健康！")
+        else:
+            healthy_str = "、".join(healthy)
+            lines.append(f"🟢 健康（{len(healthy)}人）：{healthy_str}")
+
+        txt = "\n".join(lines)
+        kb = back_kb("menu_roster")
+        if edit:
+            await update.callback_query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+        else:
+            await update.message.reply_text(txt, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"show_injuries error: {e}")
+        txt = f"載入傷兵資料失敗：{e}"
+        if edit:
+            await update.callback_query.edit_message_text(txt, parse_mode="HTML", reply_markup=back_kb("menu_roster"))
+
 
 async def show_matchup(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
     try:
@@ -880,6 +987,7 @@ def run_bot():
     # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", start))
+    application.add_handler(CommandHandler("refresh", refresh_roster))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
