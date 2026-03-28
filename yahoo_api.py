@@ -249,6 +249,72 @@ def get_league_standings():
     return standings
 
 
+def get_my_roster_with_keys():
+    """
+    取得我的陣容球員清單，包含 player_key 與即時傷兵狀態
+    回傳: [{'name': str, 'player_key': str, 'position': str, 'status': str, 'injury_note': str}, ...]
+    失敗回傳: []
+    """
+    my_team_key = f"{LEAGUE_KEY}.t.{USER_TEAM_ID}"
+    root = _get(f"team/{my_team_key}/roster/players")
+    if root is None:
+        return []
+
+    players = []
+    try:
+        for player_el in root.iter(f'{{{NS}}}player'):
+            key_el    = player_el.find(f'{{{NS}}}player_key')
+            full_el   = player_el.find(f'.//{{{NS}}}full')
+            pos_el    = player_el.find(f'.//{{{NS}}}display_position')
+            status_el = player_el.find(f'.//{{{NS}}}status')
+            injury_el = player_el.find(f'.//{{{NS}}}injury_note')
+
+            if key_el is None or full_el is None:
+                continue
+
+            players.append({
+                'name':         full_el.text,
+                'player_key':   key_el.text,
+                'position':     pos_el.text if pos_el is not None else '—',
+                'status':       (status_el.text or 'Active') if status_el is not None else 'Active',
+                'injury_note':  (injury_el.text or '') if injury_el is not None else '',
+            })
+    except Exception as e:
+        print(f"[Yahoo API] 解析陣容球員失敗: {e}")
+
+    return players
+
+
+def get_player_news(player_key, max_items=3):
+    """
+    取得單一球員的 Yahoo Fantasy 最新消息
+    player_key: e.g. '466.p.5893'
+    回傳: [{'headline': str, 'body': str, 'published': str}, ...]
+    失敗回傳: []
+    """
+    root = _get(f"player/{player_key}/news")
+    if root is None:
+        return []
+
+    news_items = []
+    try:
+        for item in root.iter(f'{{{NS}}}news_item'):
+            headline_el  = item.find(f'{{{NS}}}headline')
+            body_el      = item.find(f'{{{NS}}}body')
+            published_el = item.find(f'{{{NS}}}published')
+            news_items.append({
+                'headline':  headline_el.text  if headline_el is not None  else '',
+                'body':      body_el.text      if body_el is not None      else '',
+                'published': published_el.text if published_el is not None else '',
+            })
+            if len(news_items) >= max_items:
+                break
+    except Exception as e:
+        print(f"[Yahoo API] 解析球員新聞失敗: {e}")
+
+    return news_items
+
+
 if __name__ == "__main__":
     from yahoo_config import CURRENT_WEEK
     print("[Yahoo API 測試]")

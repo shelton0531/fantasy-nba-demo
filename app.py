@@ -47,6 +47,23 @@ def initialize_token_file():
 
 initialize_token_file()
 
+
+def start_telegram_bot():
+    """在背景 thread 啟動 Telegram Bot（需 TELEGRAM_BOT_TOKEN 環境變數）"""
+    token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not token:
+        print("[Bot] TELEGRAM_BOT_TOKEN 未設定，跳過 bot 啟動")
+        return
+    import threading
+    from telegram_bot import run_bot
+    t = threading.Thread(target=run_bot, daemon=True, name="telegram-bot")
+    t.start()
+    print("[Bot] Telegram Bot 已在背景啟動")
+
+
+start_telegram_bot()
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -60,6 +77,13 @@ def roster_season():
 def roster_recent():
     """Get roster with last 15 game stats"""
     return jsonify(get_roster_with_stats('recent'))
+
+@app.route("/api/roster/<period>")
+def roster_period(period):
+    """Get roster stats for a specific period: season | recent | 7d | 14d | 30d"""
+    if period not in ('season', 'recent', '7d', '14d', '30d'):
+        return jsonify({'error': 'invalid period'}), 400
+    return jsonify(get_roster_with_stats(period))
 
 @app.route("/api/roster")
 def roster():

@@ -393,6 +393,17 @@
     .section-title { font-size: 16px; font-weight: 700; }
     .section-line { flex: 1; height: 1px; background: var(--border); }
 
+    /* ── Period toggle ── */
+    .period-tabs { display: flex; gap: 4px; flex-shrink: 0; }
+    .period-btn {
+      padding: 4px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text-muted); font-size: 12px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .period-btn.active { background: var(--primary); color: #000; border-color: var(--primary); font-weight: 600; }
+    .period-btn:hover:not(.active) { border-color: var(--primary); color: var(--text); }
+
     /* ── Tabs ── */
     .view { display: none; }
     .view.active { display: block; opacity: 0; }
@@ -579,7 +590,12 @@
       <div class="section-header">
         <span class="section-title">我的陣容</span>
         <div class="section-line"></div>
-        <span style="font-size:12px;color:var(--text-muted);">本週累計數據</span>
+        <div class="period-tabs">
+          <button class="period-btn active" data-period="season">整季</button>
+          <button class="period-btn" data-period="7d">7天</button>
+          <button class="period-btn" data-period="14d">14天</button>
+          <button class="period-btn" data-period="30d">30天</button>
+        </div>
       </div>
       <div id="player-grid" class="player-grid loading">載入中...</div>
     </section>
@@ -764,84 +780,149 @@ async function loadMatchup() {
   }
 }
 
-async function loadRoster() {
+let rosterPeriod = 'season';
+
+// Period toggle buttons
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      rosterPeriod = btn.dataset.period;
+      loadRoster(rosterPeriod);
+    });
+  });
+});
+
+async function loadRoster(period) {
+  period = period || rosterPeriod || 'season';
+  const grid = document.getElementById('player-grid');
+  grid.classList.add('loading');
+  grid.innerHTML = '載入中...';
   try {
-    const res = await fetch(`${API}/api/roster`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const players = await res.json();
-    const grid = document.getElementById('player-grid');
+    // 'season' uses legacy endpoint for full stats with ranks; others use new period endpoint
+    let players, isFullFormat = false;
+    if (period === 'season') {
+      const res = await fetch(`${API}/api/roster`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      players = await res.json();
+      isFullFormat = true;
+    } else {
+      const res = await fetch(`${API}/api/roster/${period}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      players = data.players || [];
+    }
     grid.classList.remove('loading');
 
     const trendIcon = t => t === 'hot' ? '🔥' : t === 'cold' ? '❄️' : '➡️';
     const trendLabel = t => t === 'hot' ? '狀態火熱' : t === 'cold' ? '狀態低迷' : '正常狀態';
     const trendCls   = t => t === 'hot' ? 'trend-hot' : t === 'cold' ? 'trend-cold' : 'trend-neutral';
+    const rankColor = r => r <= 10 ? 'var(--green)' : r <= 30 ? 'var(--primary)' : 'var(--text-muted)';
 
-    grid.innerHTML = players.map(p => {
-      const initials = p.name.split(' ').map(w => w[0]).join('').slice(0,2);
-      const statusPill = p.status === 'Out'
-        ? `<span class="status-pill status-out">OUT</span>`
-        : p.status === 'Questionable'
-        ? `<span class="status-pill status-questionable">Q</span>`
-        : '';
-      const injuryNote = p.injury
-        ? `<div class="injury-tooltip">⚠ ${p.injury}</div>` : '';
-      const cardCls = p.status === 'Out' ? 'out' : p.status === 'Questionable' ? 'questionable' : '';
-      const a = p.avg;
-      const rankColor = r => r <= 10 ? 'var(--green)' : r <= 30 ? 'var(--primary)' : 'var(--text-muted)';
-      const milestones = [a.dd2 > 0 ? `${a.dd2}DD` : null, a.td3 > 0 ? `${a.td3}TD` : null].filter(Boolean).join(' · ') || '';
-      const cardAccent = a.ranks.fantasy_pts <= 50 ? 'var(--green)' : a.ranks.fantasy_pts <= 100 ? 'var(--primary)' : 'var(--border)';
-
-      return `
-      <div class="player-card ${cardCls}" style="--card-accent:${cardAccent}">
-        <div class="player-top">
-          <div>
-            <div class="player-name">${p.name} ${statusPill}</div>
-            <div class="player-meta">${p.team} · ${p.position} · ${a.min}分鐘</div>
-            ${injuryNote}
+    if (isFullFormat) {
+      // Full season format: p.avg with ranks, trend, fantasy_pts etc.
+      grid.innerHTML = players.map(p => {
+        const initials = p.name.split(' ').map(w => w[0]).join('').slice(0,2);
+        const statusPill = p.status === 'Out'
+          ? `<span class="status-pill status-out">OUT</span>`
+          : p.status === 'Questionable'
+          ? `<span class="status-pill status-questionable">Q</span>`
+          : '';
+        const injuryNote = p.injury ? `<div class="injury-tooltip">⚠ ${p.injury}</div>` : '';
+        const cardCls = p.status === 'Out' ? 'out' : p.status === 'Questionable' ? 'questionable' : '';
+        const a = p.avg;
+        const milestones = [a.dd2 > 0 ? `${a.dd2}DD` : null, a.td3 > 0 ? `${a.td3}TD` : null].filter(Boolean).join(' · ') || '';
+        const cardAccent = a.ranks.fantasy_pts <= 50 ? 'var(--green)' : a.ranks.fantasy_pts <= 100 ? 'var(--primary)' : 'var(--border)';
+        return `
+        <div class="player-card ${cardCls}" style="--card-accent:${cardAccent}">
+          <div class="player-top">
+            <div>
+              <div class="player-name">${p.name} ${statusPill}</div>
+              <div class="player-meta">${p.team} · ${p.position} · ${a.min}分鐘</div>
+              ${injuryNote}
+            </div>
+            <div class="player-avatar">${initials}</div>
           </div>
-          <div class="player-avatar">${initials}</div>
-        </div>
-
-        <div class="player-stats">
-          <div class="stat-item">
-            <div class="stat-val" style="color:${rankColor(a.ranks.pts)};">${a.pts}</div>
-            <div class="stat-key">PTS <span style="color:${rankColor(a.ranks.pts)};font-size:9px;">#${a.ranks.pts}</span></div>
+          <div class="player-stats">
+            <div class="stat-item">
+              <div class="stat-val" style="color:${rankColor(a.ranks.pts)};">${a.pts}</div>
+              <div class="stat-key">PTS <span style="color:${rankColor(a.ranks.pts)};font-size:9px;">#${a.ranks.pts}</span></div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" style="color:${rankColor(a.ranks.reb)};">${a.reb}</div>
+              <div class="stat-key">REB <span style="color:${rankColor(a.ranks.reb)};font-size:9px;">#${a.ranks.reb}</span></div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" style="color:${rankColor(a.ranks.ast)};">${a.ast}</div>
+              <div class="stat-key">AST <span style="color:${rankColor(a.ranks.ast)};font-size:9px;">#${a.ranks.ast}</span></div>
+            </div>
           </div>
-          <div class="stat-item">
-            <div class="stat-val" style="color:${rankColor(a.ranks.reb)};">${a.reb}</div>
-            <div class="stat-key">REB <span style="color:${rankColor(a.ranks.reb)};font-size:9px;">#${a.ranks.reb}</span></div>
+          <div class="fantasy-row">
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);">Fantasy 積分</div>
+              <div class="fantasy-val">${a.fantasy_pts}</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="fantasy-rank">聯盟 <span style="color:${rankColor(a.ranks.fantasy_pts)};font-weight:700;">#${a.ranks.fantasy_pts}</span></div>
+              ${milestones ? `<div style="font-size:10px;color:var(--purple);">${milestones}</div>` : ''}
+              <div style="font-size:10px;color:${a.plus_minus >= 0 ? 'var(--green)' : 'var(--red)'};">+/- ${a.plus_minus}</div>
+            </div>
           </div>
-          <div class="stat-item">
-            <div class="stat-val" style="color:${rankColor(a.ranks.ast)};">${a.ast}</div>
-            <div class="stat-key">AST <span style="color:${rankColor(a.ranks.ast)};font-size:9px;">#${a.ranks.ast}</span></div>
+          <div class="ext-stats">
+            <div class="ext-stat"><div class="ext-val">${a.threes}</div><div class="ext-key">3PM</div></div>
+            <div class="ext-stat"><div class="ext-val">${a.fg_pct?.toFixed(1) ?? '—'}%</div><div class="ext-key">FG%</div></div>
+            <div class="ext-stat"><div class="ext-val">${a.ft_pct}%</div><div class="ext-key">FT%</div></div>
+            <div class="ext-stat"><div class="ext-val">${a.stl}/${a.blk}</div><div class="ext-key">STL/BLK</div></div>
           </div>
-        </div>
-
-        <div class="fantasy-row">
-          <div>
-            <div style="font-size:10px;color:var(--text-muted);">Fantasy 積分</div>
-            <div class="fantasy-val">${a.fantasy_pts}</div>
+          <div class="player-footer">
+            <span class="games-badge">本週 ${p.games_played}場 / 剩${p.games_remaining}場</span>
+            <span class="trend ${trendCls(p.trend)}">${trendIcon(p.trend)} ${trendLabel(p.trend)}</span>
           </div>
-          <div style="text-align:right;">
-            <div class="fantasy-rank">聯盟 <span style="color:${rankColor(a.ranks.fantasy_pts)};font-weight:700;">#${a.ranks.fantasy_pts}</span></div>
-            ${milestones ? `<div style="font-size:10px;color:var(--purple);">${milestones}</div>` : ''}
-            <div style="font-size:10px;color:${a.plus_minus >= 0 ? 'var(--green)' : 'var(--red)'};">+/- ${a.plus_minus}</div>
+        </div>`;
+      }).join('');
+    } else {
+      // Period format (7d/14d/30d): p.stats with basic stats, p.position from my_roster
+      const periodLabel = {'7d':'近7天','14d':'近14天','30d':'近30天'}[period] || period;
+      grid.innerHTML = players.map(p => {
+        const s = p.stats;
+        const initials = p.name.split(' ').map(w => w[0]).join('').slice(0,2);
+        if (!s) return `
+          <div class="player-card" style="--card-accent:var(--border)">
+            <div class="player-top">
+              <div><div class="player-name">${p.name}</div>
+              <div class="player-meta">${p.team || '—'} · ${p.position || '—'}</div></div>
+              <div class="player-avatar">${initials}</div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);padding:8px 0;">無${periodLabel}數據</div>
+          </div>`;
+        return `
+        <div class="player-card" style="--card-accent:var(--primary)">
+          <div class="player-top">
+            <div>
+              <div class="player-name">${p.name}</div>
+              <div class="player-meta">${p.team} · ${p.position || '—'} · ${p.gp}場</div>
+            </div>
+            <div class="player-avatar">${initials}</div>
           </div>
-        </div>
-
-        <div class="ext-stats">
-          <div class="ext-stat"><div class="ext-val">${a.threes}</div><div class="ext-key">3PM</div></div>
-          <div class="ext-stat"><div class="ext-val">${a.fg_pct?.toFixed(1) ?? a.fg3_pct?.toFixed(1) ?? '—'}%</div><div class="ext-key">FG%</div></div>
-          <div class="ext-stat"><div class="ext-val">${a.ft_pct}%</div><div class="ext-key">FT%</div></div>
-          <div class="ext-stat"><div class="ext-val">${a.stl}/${a.blk}</div><div class="ext-key">STL/BLK</div></div>
-        </div>
-
-        <div class="player-footer">
-          <span class="games-badge">本週 ${p.games_played}場 / 剩${p.games_remaining}場</span>
-          <span class="trend ${trendCls(p.trend)}">${trendIcon(p.trend)} ${trendLabel(p.trend)}</span>
-        </div>
-      </div>`;
-    }).join('');
+          <div class="player-stats">
+            <div class="stat-item"><div class="stat-val">${s.pts}</div><div class="stat-key">PTS</div></div>
+            <div class="stat-item"><div class="stat-val">${s.reb}</div><div class="stat-key">REB</div></div>
+            <div class="stat-item"><div class="stat-val">${s.ast}</div><div class="stat-key">AST</div></div>
+          </div>
+          <div class="ext-stats">
+            <div class="ext-stat"><div class="ext-val">${s['3pm']}</div><div class="ext-key">3PM</div></div>
+            <div class="ext-stat"><div class="ext-val">${s.fg_pct}%</div><div class="ext-key">FG%</div></div>
+            <div class="ext-stat"><div class="ext-val">${s.ft_pct}%</div><div class="ext-key">FT%</div></div>
+            <div class="ext-stat"><div class="ext-val">${s.stl}/${s.blk}</div><div class="ext-key">STL/BLK</div></div>
+          </div>
+          <div class="player-footer">
+            <span class="games-badge">${periodLabel} ${p.gp}場均值</span>
+            <span style="font-size:11px;color:var(--text-muted);">TO: ${s.to}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
   } catch (error) {
     console.error('loadRoster error:', error);
     const grid = document.getElementById('player-grid');

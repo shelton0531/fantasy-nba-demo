@@ -1,0 +1,5 @@
+- [Working Directory Preference](working_directory.md) — Always execute and save from G:\Vibe coding\fantasy-nba-demo
+- [Session Startup Protocol](session_startup_protocol.md) — Greet and provide task status on every session start
+- [File Storage Convention](file_storage_convention.md) — All project files stored within project directory
+- [Complete Project Plan](project_plan.md) — Full roadmap with all phases, major and minor tasks
+- [Task Progress Tracker](task_progress.md) — Active tasks and current priorities

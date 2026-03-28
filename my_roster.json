@@ -13,7 +13,7 @@
       "name": "Kennedy Chandler",
       "api_name": "Kennedy Chandler",
       "team": "UTA",
-      "position": "—",
+      "position": "PG",
       "status": "Active",
       "notes": "整季 Fantasy 33.2 pts, 聯盟排名 #72"
     },
@@ -22,7 +22,7 @@
       "name": "Tre Jones",
       "api_name": "Tre Jones",
       "team": "CHI",
-      "position": "—",
+      "position": "PG/SG",
       "status": "Active",
       "notes": "整季 Fantasy 27.6 pts, 聯盟排名 #122"
     },
@@ -31,7 +31,7 @@
       "name": "Deni Avdija",
       "api_name": "Deni Avdija",
       "team": "POR",
-      "position": "—",
+      "position": "SF/PF",
       "status": "Active",
       "notes": "整季 Fantasy 42.7 pts, 聯盟排名 #17"
     },
@@ -40,7 +40,7 @@
       "name": "Gui Santos",
       "api_name": "Gui Santos",
       "team": "GSW",
-      "position": "—",
+      "position": "SF",
       "status": "Active",
       "notes": "整季 Fantasy 18.4 pts, 聯盟排名 #248"
     },
@@ -49,7 +49,7 @@
       "name": "LeBron James",
       "api_name": "LeBron James",
       "team": "LAL",
-      "position": "—",
+      "position": "SF/PF",
       "status": "Active",
       "notes": "整季 Fantasy 40.6 pts, 聯盟排名 #25"
     },
@@ -58,7 +58,7 @@
       "name": "P.J. Washington",
       "api_name": "P.J. Washington",
       "team": "DAL",
-      "position": "—",
+      "position": "PF",
       "status": "Active",
       "notes": "整季 Fantasy 30.0 pts, 聯盟排名 #103"
     },
@@ -67,7 +67,7 @@
       "name": "Deandre Ayton",
       "api_name": "Deandre Ayton",
       "team": "LAL",
-      "position": "—",
+      "position": "C",
       "status": "Active",
       "notes": "整季 Fantasy 26.9 pts, 聯盟排名 #133"
     },
@@ -76,7 +76,7 @@
       "name": "Amen Thompson",
       "api_name": "Amen Thompson",
       "team": "HOU",
-      "position": "—",
+      "position": "SG/SF",
       "status": "Active",
       "notes": "整季 Fantasy 39.0 pts, 聯盟排名 #34"
     },
@@ -85,7 +85,7 @@
       "name": "Ace Bailey",
       "api_name": "Ace Bailey",
       "team": "UTA",
-      "position": "—",
+      "position": "SF",
       "status": "Active",
       "notes": "整季 Fantasy 24.0 pts, 聯盟排名 #160"
     },
@@ -94,7 +94,7 @@
       "name": "Paul George",
       "api_name": "Paul George",
       "team": "PHI",
-      "position": "—",
+      "position": "SF/SG",
       "status": "Active",
       "notes": "整季 Fantasy 32.0 pts, 聯盟排名 #81"
     },
@@ -103,7 +103,7 @@
       "name": "Bobby Portis",
       "api_name": "Bobby Portis",
       "team": "MIL",
-      "position": "—",
+      "position": "PF/C",
       "status": "Active",
       "notes": "整季 Fantasy 25.1 pts, 聯盟排名 #150"
     },
@@ -112,7 +112,7 @@
       "name": "Josh Hart",
       "api_name": "Josh Hart",
       "team": "NYK",
-      "position": "—",
+      "position": "SF",
       "status": "Active",
       "notes": "整季 Fantasy 31.0 pts, 聯盟排名 #89"
     },
@@ -121,7 +121,7 @@
       "name": "DeMar DeRozan",
       "api_name": "DeMar DeRozan",
       "team": "SAC",
-      "position": "—",
+      "position": "SG/SF",
       "status": "Active",
       "notes": "整季 Fantasy 30.8 pts, 聯盟排名 #93"
     },
@@ -130,7 +130,7 @@
       "name": "Shaedon Sharpe",
       "api_name": "Shaedon Sharpe",
       "team": "POR",
-      "position": "—",
+      "position": "SG/SF",
       "status": "Active",
       "notes": "整季 Fantasy 32.2 pts, 聯盟排名 #79"
     },
@@ -139,7 +139,7 @@
       "name": "Isaiah Collier",
       "api_name": "Isaiah Collier",
       "team": "UTA",
-      "position": "—",
+      "position": "PG",
       "status": "Active",
       "notes": "整季 Fantasy 27.3 pts, 聯盟排名 #124"
     },
@@ -148,7 +148,7 @@
       "name": "Russell Westbrook",
       "api_name": "Russell Westbrook",
       "team": "SAC",
-      "position": "—",
+      "position": "PG",
       "status": "Active",
       "notes": "整季 Fantasy 32.9 pts, 聯盟排名 #73"
     }

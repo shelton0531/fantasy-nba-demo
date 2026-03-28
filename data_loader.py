@@ -44,21 +44,56 @@ def find_player(players_list, name):
 def get_roster_with_stats(period='season'):
     """
     Get user's roster with player stats
-    period: 'season' or 'recent'
+    period: 'season' | 'recent' | '7d' | '14d' | '30d'
     """
-    data = load_players_data()
     roster = load_my_roster()
+    result = {'league': roster['league_info'], 'players': []}
+
+    # 7d/14d/30d: use nba_live to fetch live NBA API stats
+    if period in ('7d', '14d', '30d'):
+        n = int(period.replace('d', ''))
+        try:
+            from data.nba_live import _fetch_n_game_stats, _find_player, _f
+            raw = _fetch_n_game_stats(n)
+            for rp in roster['roster']:
+                row = _find_player(raw, rp['api_name'])
+                if row:
+                    result['players'].append({
+                        'id': rp['id'],
+                        'name': rp['name'],
+                        'position': rp.get('position', '—'),
+                        'team': row.get('TEAM_ABBREVIATION', '—'),
+                        'gp': int(row.get('GP', 0)),
+                        'stats': {
+                            'fg_pct': _f(row, 'FG_PCT', scale=100),
+                            'ft_pct': _f(row, 'FT_PCT', scale=100),
+                            '3pm':    _f(row, 'FG3M'),
+                            'pts':    _f(row, 'PTS'),
+                            'reb':    _f(row, 'REB'),
+                            'ast':    _f(row, 'AST'),
+                            'stl':    _f(row, 'STL'),
+                            'blk':    _f(row, 'BLK'),
+                            'to':     _f(row, 'TOV'),
+                        }
+                    })
+                else:
+                    result['players'].append({
+                        'id': rp['id'], 'name': rp['name'],
+                        'position': rp.get('position', '—'),
+                        'team': '—', 'gp': 0, 'stats': None
+                    })
+            return result
+        except Exception as e:
+            print(f"[data_loader] nba_live L{n} 失敗，回退到整季: {e}")
+            period = 'season'
+
+    data = load_players_data()
 
     # Select correct data period
     if period == 'recent':
         players_list = data['recent']['players']
     else:
         players_list = data['season']['players']
-
-    result = {
-        'league': roster['league_info'],
-        'players': []
-    }
 
     for roster_player in roster['roster']:
         player_data = find_player(players_list, roster_player['api_name'])
@@ -67,6 +102,7 @@ def get_roster_with_stats(period='season'):
             result['players'].append({
                 'id': roster_player['id'],
                 'name': roster_player['name'],
+                'position': roster_player.get('position', '—'),
                 'team': player_data['TEAM_ABBREVIATION'],
                 'gp': int(player_data['GP']),
                 'stats': {
@@ -85,6 +121,7 @@ def get_roster_with_stats(period='season'):
             result['players'].append({
                 'id': roster_player['id'],
                 'name': roster_player['name'],
+                'position': roster_player.get('position', '—'),
                 'team': '—',
                 'gp': 0,
                 'stats': None,

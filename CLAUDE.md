@@ -8,7 +8,7 @@
 ---
 
 ## 基本設定
-- 專案路徑：C:\Vibe coding\fantasy-nba-demo
+- 專案路徑：G:\Vibe coding\fantasy-nba-demo
 - 後端：Python / Flask (app.py)
 - 啟動指令：python3 -m flask run --port 5000
 - 瀏覽器：http://localhost:5000
@@ -58,50 +58,83 @@
 
 ---
 
-## 目前進度（2026-03-26）
-
-### ✅ 已完成
-- ✅ players_data.json 已建立
-- ✅ app.py 已建立（Flask 後端正常運作）
-- ✅ 前端介面已建立（本週對戰、我的陣容、自由市場、AI 建議）
-- ✅ **任務 1：修正前端數據顯示** — 所有 6 項子任務完成
-  - 刪除重複函數（英文版）
-  - 修正 showView 函數（全域 event → 參數傳入）
-  - 修正 CSS class 名稱映射（winning → win）
-  - 修正 catch 區塊未清除 loading 狀態
-  - 修正 fg3_pct 欄位語意（改為 fg_pct）
-  - 前端現已正常顯示所有數據，不再卡「載入中」
-
-- ✅ **任務 2：H2H UI 優化** — 所有 5 項子任務完成
-  - API 回傳加入 lower_is_better 欄位
-  - 比分卡加入平手 (Ties) 顯示 (W-L-T 格式)
-  - 動態比分顏色（勝=綠、負=紅、平=灰）
-  - TOV 進度條方向修正（失誤低者進度條更長）
-  - 低值勝類別加「↓勝」標示
-
-- ✅ **Flask 環境確認** — 已安裝 Flask 3.1.3，伺服器正常運作於 http://localhost:5000
-
-### ⏳ 進行中
-- **任務 2-OAuth：完成 Yahoo Fantasy API 認證**
-  - 尝試 1：直接 OAuth 1.0a（失敗 - Consumer Key 無效）
-  - 尝试 2A-1：使用 yahoofantasy 庫（失敗 - redirect_uri 參數遺失）
-  - 尝试 2A-2：簡化版 OAuth 2.0 腳本（等待使用者驗證 Yahoo Developer Portal）
-  - **新文件**: oauth2_login.py（簡化 OAuth 2.0 流程，不依賴 yahoofantasy）
-  - **下一步**: 使用者驗證 Yahoo App 設定並重試
-
-### ❌ 未開始
-- 任務 3：整合 Yahoo API 到 data_loader.py（用真實對手數據取代假對手）
-- 任務 4：更新 /api/matchup 端點回傳真實對手資訊
-- 任務 5：端對端測試驗證
-- Vercel 部署
+## ⚡ 啟動說明
+**重要：每次啟動 Claude Code 時，會自動強制讀取本檔案以獲取最新專案狀態。**
+- 配置時間：2026-03-27
+- 觸發機制：Claude 環境初始化時自動讀取 CLAUDE.md
+- 目的：確保 Claude 隨時掌握最新進度、配置、和工作規則
 
 ---
 
-## 下一步優先順序
-1. **完成 OAuth 認證** — 使用者驗證 Yahoo Portal 設定，執行 oauth2_login.py
-2. **整合 Yahoo API** — 修改 data_loader.py 呼叫 yahoo_api.py，使用真實對手陣容
-3. **前端顯示真實對手** — 更新 /api/matchup 端點回傳對手名稱和實際統計
-4. **部署到 Vercel** — Flask 改為 Serverless 或改用 Railway/Render
+## 目前進度（2026-03-27 最新確認）
+
+### 🚀 專案狀態
+**應用已上線：** https://web-production-d742.up.railway.app
+**進度階段：** Phase 2 完成 → Phase 3 部署中
+**最後更新：** PROGRESS.md (2026-03-27 16:59)
+
+### ✅ 第一階段：Web App 開發 — 100% 完成
+- ✅ 後端 API（Flask）— 完整實現
+- ✅ 前端 UI（HTML/CSS/JS）— 所有版面完成
+- ✅ 任務 1：修正前端數據顯示 — 6 項子任務完成
+- ✅ 任務 2：H2H UI 優化 — 5 項子任務完成
+
+### ✅ 第二階段：真實數據集成 — 100% 完成
+- ✅ OAuth Token 取得 — Yahoo Fantasy API 認證成功
+- ✅ 修正 game_key（466，2025-26 賽季）
+- ✅ 任務 3：Yahoo API 整合 — 真實對手統計已連接
+- ✅ 任務 4：前端顯示真實對手名稱 — 完成
+- ✅ 任務 5：Token 自動續期 — 自動刷新機制已實現
+- ✅ 任務 6：Token 部署方案 — 環境變數方案已配置
+- ✅ 任務 9：全聯盟陣容頁面 — 150+ 球員數據對照完成
+
+### ⏳ 第三階段：部署 — 進行中（任務 7）
+**Railway 部署：** 應用程式已啟動，環境變數設定中
+- ✅ 應用程式已上線：https://web-production-d742.up.railway.app
+- ✅ 代碼已推送，自動部署完成
+- ✅ Volume 初始化方案已實施（`initialize_token_file()`）
+- ⏳ **待完成**：Railway Volume 持久化設定（見下方優先順序）
+
+### ⏭️ 未來計畫
+- 任務 8：週次切換（部署後）
+- 任務 10：手機/响應式設計
+- 任務 11：Telegram Web App 集成
+- 任務 12：LINE MINI App 申請
+
+---
+
+## 🔴 立即優先順序（任務 7 — Railway Volume 持久化）
+
+**5 分鐘完成，永久解決 Token 過期問題：**
+
+1. 進入 Railway Dashboard
+   - 專案：fantasy-nba-demo
+   - Service：web
+   - Tab：**Volumes**
+
+2. 建立 Volume（如尚未建立）
+   - Mount Path：`/data`
+   - 點擊 Create
+
+3. 進入 **Variables** Tab
+   - 確認 `TOKEN_DIR = /data`
+   - 確認 `CURRENT_WEEK = 22`
+
+4. 上傳初始 Token 檔案到 Volume（本地執行）
+   ```bash
+   cd "G:\Vibe coding\fantasy-nba-demo"
+   python3 deploy_token.py
+   ```
+
+5. 點擊 **Redeploy** 按鈕
+
+6. 驗證成功
+   ```bash
+   curl https://web-production-d742.up.railway.app/api/token-status
+   # 預期：status = "ok", source = "file"
+   ```
+
+完成後：✨ **自動化完成**，Token 每次過期自動刷新，無需再手動更新
 
 ---
 
