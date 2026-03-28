@@ -464,10 +464,16 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
     except Exception:
         rec_names = set()
 
-    # 篩選 FA
+    # 建立近期出賽 map（recent section = 近 15 場），GP=0 視為受傷/停賽
+    recent_players = data.get('recent', {}).get('players', [])
+    recent_gp_map = {normalize(p['PLAYER_NAME']): p.get('GP', 0) for p in recent_players}
+
+    # 篩選 FA：賽季場次 > 10、未被任何隊選走、近期有出賽（過濾長期傷兵）
     fas = [
         p for p in all_players
-        if p.get('GP', 0) > 10 and normalize(p['PLAYER_NAME']) not in rostered
+        if p.get('GP', 0) > 10
+        and normalize(p['PLAYER_NAME']) not in rostered
+        and recent_gp_map.get(normalize(p['PLAYER_NAME']), 0) > 0
     ]
 
     # 排序

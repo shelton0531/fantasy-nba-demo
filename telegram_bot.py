@@ -2,21 +2,14 @@
 Fantasy NBA Telegram Bot
 主選單：我的陣容 / 本週對戰 / 查詢球員 / 聯盟排名 / 今日賽程
 定時推播：09:00 對戰更新 / 14:00 球員日報 / 週一 14:00 本週結果
-
-球員日報資料來源：
-  1. Yahoo Fantasy 官方球員消息（get_player_news）
-  2. Google News RSS（免 API key，抓近期新聞標題）
 """
 
 import os
 import json
 import logging
-import xml.etree.ElementTree as ET
 from datetime import datetime, time as datetime_time, date
 from pathlib import Path
-from urllib.parse import quote_plus
 
-import requests
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -75,6 +68,27 @@ def schedule_menu_kb():
 def back_kb(target="back_main"):
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 返回", callback_data=target)]])
 
+def player_list_kb(period: str) -> InlineKeyboardMarkup:
+    """球員選擇鍵盤（2人一排）。period: '7d' | '14d' | 'rpt'"""
+    import json as _json
+    try:
+        with open("my_roster.json", encoding="utf-8") as f:
+            roster = _json.load(f)
+        players = roster.get("roster", [])
+    except Exception:
+        players = []
+    buttons = []
+    row = []
+    for i, p in enumerate(players):
+        row.append(InlineKeyboardButton(p["name"], callback_data=f"pd_{period}_{i}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("⬅️ 返回陣容選單", callback_data="menu_roster")])
+    return InlineKeyboardMarkup(buttons)
+
 # ─────────────────────────────────────────────
 # 工具：狀態 emoji
 # ─────────────────────────────────────────────
@@ -86,69 +100,6 @@ def status_emoji(status: str) -> str:
     if s in ("Q", "QUESTIONABLE", "DTD"):
         return "🟡"
     return "🟢"
-
-# ─────────────────────────────────────────────
-# 工具：Google News RSS 抓取（免 API key）
-# ─────────────────────────────────────────────
-
-def get_google_news(player_name: str, max_items: int = 3) -> list[dict]:
-    """
-    透過 Google News RSS 取得球員近期新聞標題
-    回傳: [{'title': str, 'source': str, 'link': str}, ...]
-    失敗回傳: []
-    """
-    query = quote_plus(f"{player_name} NBA")
-    url   = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
-    try:
-        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code != 200:
-            return []
-        root = ET.fromstring(resp.content)
-        items = []
-        for item in root.iter("item"):
-            title_el  = item.find("title")
-            link_el   = item.find("link")
-            source_el = item.find("source")
-            if title_el is None:
-                continue
-            title = title_el.text or ""
-            # 過濾掉非 NBA 相關（Google News 有時混入同名的非體育新聞）
-            if not any(kw in title.lower() for kw in ["nba", "lakers", "warriors", player_name.split()[-1].lower()]):
-                continue
-            items.append({
-                "title":  title,
-                "source": source_el.text if source_el is not None else "",
-                "link":   link_el.text if link_el is not None else "",
-            })
-            if len(items) >= max_items:
-                break
-        return items
-    except Exception as e:
-        logger.warning(f"Google News fetch failed for {player_name}: {e}")
-        return []
-
-
-# ─────────────────────────────────────────────
-# 工具：球員日報快取（每日，不含 LLM）
-# ─────────────────────────────────────────────
-
-def _report_cache_path() -> Path:
-    return CACHE_DIR / f"daily_report_{date.today().isoformat()}.json"
-
-def load_report_cache() -> dict:
-    p = _report_cache_path()
-    if p.exists():
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
-
-def save_report_cache(cache: dict):
-    CACHE_DIR.mkdir(exist_ok=True)
-    _report_cache_path().write_text(
-        json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
 
 # ─────────────────────────────────────────────
 # 格式化：陣容卡片
@@ -171,7 +122,7 @@ def format_roster_cards(players: list, period_label: str, today_teams: set) -> l
         gp   = p.get("gp", 0)
         has_game = "🟢" if team in today_teams else "⚫"
         lines.append(
-            f"{has_game} <b>{p['name']}</b>  {team} · {pos} · {gp}場\n"
+            f"\n{has_game} <b>{p['name']}</b>  {team} · {pos} · {gp}場\n"
             f"   PTS {s.get('pts',0)} | REB {s.get('reb',0)} | AST {s.get('ast',0)}\n"
             f"   STL {s.get('stl',0)} | 3PM {s.get('3pm',0)} | FG {s.get('fg_pct',0)}%\n"
         )
@@ -343,6 +294,135 @@ def format_player_card(season_row: dict, row_7d: dict | None, yahoo_status: dict
     return "\n".join(lines)
 
 # ─────────────────────────────────────────────
+# Claude AI 分析（需 ANTHROPIC_API_KEY）
+# ─────────────────────────────────────────────
+
+async def analyze_player_with_claude(name: str, stats_7d: dict, stats_14d: dict,
+                                     status: str, gp_7d: int) -> str:
+    """呼叫 Claude claude-haiku-4-5 分析單一球員近期表現。無 API Key 時回傳空字串。"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return ""
+    try:
+        import anthropic
+        import asyncio
+        client = anthropic.Anthropic(api_key=api_key)
+        stats_text = (
+            f"球員：{name}  狀態：{status}\n"
+            f"近7天（{gp_7d}場）：PTS {stats_7d.get('pts',0)} | REB {stats_7d.get('reb',0)} "
+            f"| AST {stats_7d.get('ast',0)} | STL {stats_7d.get('stl',0)} "
+            f"| 3PM {stats_7d.get('3pm',0)} | FG {stats_7d.get('fg_pct',0)}%"
+        )
+        if stats_14d:
+            stats_text += (
+                f"\n近14天：PTS {stats_14d.get('pts',0)} | REB {stats_14d.get('reb',0)} "
+                f"| AST {stats_14d.get('ast',0)}"
+            )
+
+        def _call():
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "你是 Fantasy NBA 分析師。請用2-3句繁體中文簡評此球員近期 Fantasy 表現，"
+                        "並在最後給出建議（持有 / 觀察 / 考慮放棄）。\n\n" + stats_text
+                    )
+                }]
+            )
+            return msg.content[0].text
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _call)
+    except Exception as e:
+        logger.warning(f"Claude analysis failed for {name}: {e}")
+        return ""
+
+
+async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             period: str, player_idx: int, edit: bool = True):
+    """顯示單一球員詳細數據，period: '7d' | '14d' | 'rpt'"""
+    try:
+        from data_loader import get_roster_with_stats
+        from yahoo_api import get_my_roster_with_keys
+        import json as _json
+
+        with open("my_roster.json", encoding="utf-8") as f:
+            all_players = _json.load(f).get("roster", [])
+        if player_idx >= len(all_players):
+            return
+
+        player_name = all_players[player_idx]["name"]
+
+        try:
+            yahoo_map = {p["name"]: p for p in get_my_roster_with_keys()}
+        except Exception:
+            yahoo_map = {}
+        yp     = yahoo_map.get(player_name, {})
+        status = yp.get("status", "Active")
+        inj    = yp.get("injury_note", "")
+        se       = status_emoji(status)
+        inj_line = f"\n⚠️ {inj}" if inj else ""
+
+        if period in ("7d", "14d"):
+            roster_data = get_roster_with_stats(period)
+            p_data = next((p for p in roster_data.get("players", []) if p["name"] == player_name), {})
+            s    = p_data.get("stats") or {}
+            gp   = p_data.get("gp", 0)
+            team = p_data.get("team", "—")
+            pos  = p_data.get("position", "—")
+            label = "近7天" if period == "7d" else "近14天"
+            msg = (
+                f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n"
+                f"{label}（{gp}場）\n"
+                f"   PTS {s.get('pts',0)} | REB {s.get('reb',0)} | AST {s.get('ast',0)}\n"
+                f"   STL {s.get('stl',0)} | 3PM {s.get('3pm',0)} | FG {s.get('fg_pct',0)}%"
+            )
+            analysis = await analyze_player_with_claude(player_name, s, {}, status, gp)
+
+        else:  # rpt — 日報模式：同時顯示 7d + 14d
+            r7  = get_roster_with_stats("7d")
+            r14 = get_roster_with_stats("14d")
+            p7  = next((p for p in r7.get("players", []) if p["name"] == player_name), {})
+            p14 = next((p for p in r14.get("players", []) if p["name"] == player_name), {})
+            s7   = p7.get("stats") or {}
+            s14  = p14.get("stats") or {}
+            gp7  = p7.get("gp", 0)
+            gp14 = p14.get("gp", 0)
+            team = p7.get("team", "—")
+            pos  = p7.get("position", "—")
+            msg = (
+                f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n\n"
+                f"近7天（{gp7}場）\n"
+                f"   PTS {s7.get('pts',0)} | REB {s7.get('reb',0)} | AST {s7.get('ast',0)}\n"
+                f"   STL {s7.get('stl',0)} | 3PM {s7.get('3pm',0)} | FG {s7.get('fg_pct',0)}%\n\n"
+                f"近14天（{gp14}場）\n"
+                f"   PTS {s14.get('pts',0)} | REB {s14.get('reb',0)} | AST {s14.get('ast',0)}\n"
+                f"   STL {s14.get('stl',0)} | 3PM {s14.get('3pm',0)} | FG {s14.get('fg_pct',0)}%"
+            )
+            analysis = await analyze_player_with_claude(player_name, s7, s14, status, gp7)
+
+        if analysis:
+            msg += f"\n\n📊 <b>近期分析</b>\n{analysis}"
+
+        kb = back_kb(f"pl_{period}")
+        if edit:
+            await update.callback_query.edit_message_text(msg, parse_mode="HTML", reply_markup=kb)
+        else:
+            await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"show_player_detail error: {e}")
+        err = f"載入球員數據失敗：{e}"
+        if edit:
+            await update.callback_query.edit_message_text(err, parse_mode="HTML",
+                reply_markup=back_kb("menu_roster"))
+        else:
+            await update.message.reply_text(err, parse_mode="HTML")
+
+
+# ─────────────────────────────────────────────
 # Handlers：/start 與主選單
 # ─────────────────────────────────────────────
 
@@ -396,13 +476,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── 陣容 ───────────────────────────────────
     elif data in ("roster_7d", "roster_14d"):
         period = "7d" if data == "roster_7d" else "14d"
-        label  = "近7天" if period == "7d" else "近14天"
-        await query.edit_message_text(f"⏳ 載入陣容{label}數據...", parse_mode="HTML")
-        await show_roster(update, context, period, label, edit=True)
+        label  = "近7天均值" if period == "7d" else "近14天均值"
+        await query.edit_message_text(
+            f"🏀 <b>我的陣容 — {label}</b>\n\n請選擇球員：",
+            parse_mode="HTML", reply_markup=player_list_kb(period)
+        )
 
     elif data == "roster_report":
-        await query.edit_message_text("⏳ 載入球員日報（首次從 Yahoo 抓取，約 30 秒）...", parse_mode="HTML")
-        await show_daily_report(update, context, edit=True)
+        await query.edit_message_text(
+            "📋 <b>球員表現日報</b>\n\n請選擇球員查看近期表現：",
+            parse_mode="HTML", reply_markup=player_list_kb("rpt")
+        )
+
+    # 球員名單（返回用）
+    elif data in ("pl_7d", "pl_14d", "pl_rpt"):
+        period = data[3:]
+        labels = {"7d": "近7天均值", "14d": "近14天均值", "rpt": "球員日報"}
+        await query.edit_message_text(
+            f"🏀 <b>我的陣容 — {labels[period]}</b>\n\n請選擇球員：",
+            parse_mode="HTML", reply_markup=player_list_kb(period)
+        )
+
+    # 個別球員詳情
+    elif data.startswith("pd_"):
+        parts = data.split("_")
+        if len(parts) == 3:
+            period = parts[1]
+            try:
+                player_idx = int(parts[2])
+            except ValueError:
+                return
+            await query.edit_message_text("⏳ 載入中...", parse_mode="HTML")
+            await show_player_detail(update, context, period, player_idx, edit=True)
 
     # ── 對戰 ───────────────────────────────────
     elif data == "matchup_stats":
@@ -513,15 +618,13 @@ async def show_roster(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 async def show_daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
     """
-    球員日報：Yahoo Fantasy 官方消息 + Google News 近期標題
-    每天快取，同一天再次點擊直接讀快取（不重複抓網路）
+    球員日報：近7天 + 近14天均值，含傷兵狀態
     """
     try:
         from data_loader import get_roster_with_stats
-        from yahoo_api import get_my_roster_with_keys, get_player_news
+        from yahoo_api import get_my_roster_with_keys
 
-        # 先送一則「載入中」訊息
-        loading_msg = "⏳ 載入球員日報（首次需從 Yahoo 抓取，約 30 秒）..."
+        loading_msg = "⏳ 載入球員日報..."
         if edit:
             await update.callback_query.edit_message_text(loading_msg, parse_mode="HTML")
         else:
@@ -531,14 +634,12 @@ async def show_daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         roster_14d = get_roster_with_stats("14d")
         p14_map = {p["name"]: p for p in roster_14d.get("players", [])}
 
-        # 取 Yahoo 球員 key + 狀態（含傷兵）
         try:
             yahoo_players = {p["name"]: p for p in get_my_roster_with_keys()}
         except Exception as e:
             logger.warning(f"get_my_roster_with_keys failed: {e}")
             yahoo_players = {}
 
-        cache = load_report_cache()
         send = update.callback_query.message.reply_text
 
         for p in roster_7d.get("players", []):
@@ -551,60 +652,19 @@ async def show_daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             yp          = yahoo_players.get(name, {})
             status      = yp.get("status", "Active")
             injury_note = yp.get("injury_note", "")
-            player_key  = yp.get("player_key", "")
-
-            # 優先讀快取
-            if name in cache:
-                news_block = cache[name]
-            else:
-                # 1) Yahoo Fantasy 官方消息
-                yahoo_lines = []
-                if player_key:
-                    try:
-                        yahoo_news = get_player_news(player_key, max_items=2)
-                        for n in yahoo_news:
-                            if n.get("headline"):
-                                yahoo_lines.append(f"📋 <b>{n['headline']}</b>")
-                            if n.get("body"):
-                                # 截短，最多 120 字
-                                body = n["body"].strip().replace("\n", " ")
-                                yahoo_lines.append(f"   {body[:120]}{'…' if len(body)>120 else ''}")
-                    except Exception as e:
-                        logger.warning(f"Yahoo news failed for {name}: {e}")
-
-                # 2) Google News RSS（補充近期媒體報導）
-                google_lines = []
-                gnews = get_google_news(name, max_items=2)
-                for g in gnews:
-                    src   = f" [{g['source']}]" if g.get("source") else ""
-                    google_lines.append(f"🌐 {g['title']}{src}")
-
-                # 組合新聞區塊
-                if yahoo_lines:
-                    news_block = "\n".join(yahoo_lines)
-                    if google_lines:
-                        news_block += "\n" + "\n".join(google_lines)
-                elif google_lines:
-                    news_block = "\n".join(google_lines)
-                else:
-                    news_block = "（目前無 Yahoo 消息或近期報導）"
-
-                cache[name] = news_block
 
             se       = status_emoji(status)
             inj_line = f"\n⚠️ {injury_note}" if injury_note else ""
             msg = (
                 f"{se} <b>{name}</b>  {team} · {pos}{inj_line}\n"
-                f"近7天: PTS {stats7.get('pts',0)} | REB {stats7.get('reb',0)} "
+                f"近7天:  PTS {stats7.get('pts',0)} | REB {stats7.get('reb',0)} "
                 f"| AST {stats7.get('ast',0)} | 3PM {stats7.get('3pm',0)} "
                 f"| FG {stats7.get('fg_pct',0)}%\n"
                 f"近14天: PTS {stats14.get('pts',0)} | REB {stats14.get('reb',0)} "
-                f"| AST {stats14.get('ast',0)}\n\n"
-                f"{news_block}"
+                f"| AST {stats14.get('ast',0)}"
             )
-            await send(msg, parse_mode="HTML", disable_web_page_preview=True)
+            await send(msg, parse_mode="HTML")
 
-        save_report_cache(cache)
         await send("📋 日報完成", parse_mode="HTML", reply_markup=roster_menu_kb())
 
     except Exception as e:
@@ -770,7 +830,7 @@ async def push_daily_report(context: ContextTypes.DEFAULT_TYPE):
             f"",
             f"⚫ 今日無賽（{len(resting)}人）",
             f"",
-            f"📋 點選「球員表現日報」查看 Yahoo 消息 + 近期新聞",
+            f"📋 點選「球員表現日報」選擇球員查看近期數據分析",
         ]
 
         await context.bot.send_message(chat_id=int(chat_id), text="\n".join(lines), parse_mode="HTML")
