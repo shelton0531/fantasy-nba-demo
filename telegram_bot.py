@@ -116,7 +116,7 @@ def roster_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("7天均值", callback_data="roster_7d"),
          InlineKeyboardButton("14天均值", callback_data="roster_14d")],
-        [InlineKeyboardButton("📋 球員表現日報", callback_data="roster_report")],
+        [InlineKeyboardButton("📅 今日分析", callback_data="roster_report")],
         [InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")],
     ])
 
@@ -408,22 +408,17 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """顯示單一球員詳細數據，period: '7d' | '14d' | 'rpt'"""
     try:
         from data_loader import get_roster_with_stats
-        from yahoo_api import get_my_roster_with_keys
-        import json as _json
 
         all_players = get_live_roster_cached()
         if player_idx >= len(all_players):
             return
 
-        player_name = all_players[player_idx]["name"]
+        cached_player = all_players[player_idx]
+        player_name = cached_player["name"]
 
-        try:
-            yahoo_map = {p["name"]: p for p in get_my_roster_with_keys()}
-        except Exception:
-            yahoo_map = {}
-        yp     = yahoo_map.get(player_name, {})
-        status = yp.get("status", "Active")
-        inj    = yp.get("injury_note", "")
+        # 狀態直接從 live roster cache 取得，不再重複呼叫 Yahoo API
+        status = cached_player.get("status", "Active")
+        inj    = cached_player.get("injury_note", "")
         se       = status_emoji(status)
         inj_line = f"\n⚠️ {inj}" if inj else ""
 
@@ -432,8 +427,8 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             p_data = next((p for p in roster_data.get("players", []) if p["name"] == player_name), {})
             s    = p_data.get("stats") or {}
             gp   = p_data.get("gp", 0)
-            team = p_data.get("team", "—")
-            pos  = p_data.get("position", "—")
+            team = p_data.get("team", cached_player.get("team", "—"))
+            pos  = p_data.get("position", cached_player.get("position", "—"))
             label = "近7天" if period == "7d" else "近14天"
             msg = (
                 f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n"
@@ -443,27 +438,53 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             analysis = await analyze_player_with_claude(player_name, s, {}, status, gp)
 
-        else:  # rpt — 日報模式：同時顯示 7d + 14d
-            r7  = get_roster_with_stats("7d")
-            r14 = get_roster_with_stats("14d")
-            p7  = next((p for p in r7.get("players", []) if p["name"] == player_name), {})
-            p14 = next((p for p in r14.get("players", []) if p["name"] == player_name), {})
+        else:  # rpt — 今日分析：今日出賽 + 7天趨勢 + 規則建議
+            from data.nba_live import get_today_games
+            games = []
+            try:
+                games = get_today_games()
+            except Exception:
+                pass
+            today_teams = {g["home_abbr"] for g in games} | {g["away_abbr"] for g in games}
+
+            r7   = get_roster_with_stats("7d")
+            p7   = next((p for p in r7.get("players", []) if p["name"] == player_name), {})
             s7   = p7.get("stats") or {}
-            s14  = p14.get("stats") or {}
             gp7  = p7.get("gp", 0)
-            gp14 = p14.get("gp", 0)
-            team = p7.get("team", "—")
-            pos  = p7.get("position", "—")
+            team = p7.get("team", cached_player.get("team", "—"))
+            pos  = p7.get("position", cached_player.get("position", "—"))
+
+            # 今日出賽資訊
+            if team in today_teams:
+                opp_game = next((g for g in games if team in (g["home_abbr"], g["away_abbr"])), None)
+                game_str = f"{opp_game['away_abbr']} @ {opp_game['home_abbr']}" if opp_game else team
+                game_line = f"🟢 今日出賽：{game_str}"
+            else:
+                game_line = "⚫ 今日無比賽"
+
+            # 規則建議
+            pts = float(s7.get("pts", 0) or 0)
+            reb = float(s7.get("reb", 0) or 0)
+            ast = float(s7.get("ast", 0) or 0)
+            status_upper = (status or "").upper()
+            if status_upper in ("INJ", "OUT", "NA"):
+                advice = "⛔ 建議：觀察（傷兵）"
+            elif pts >= 15 or (pts >= 12 and (reb >= 6 or ast >= 5)):
+                advice = "✅ 建議：持有"
+            elif gp7 < 3:
+                advice = "🟡 建議：觀察（出賽場數少）"
+            else:
+                advice = "🟡 建議：持有觀察"
+
             msg = (
                 f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n\n"
+                f"{game_line}\n\n"
                 f"近7天（{gp7}場）\n"
                 f"   PTS {s7.get('pts',0)} | REB {s7.get('reb',0)} | AST {s7.get('ast',0)}\n"
                 f"   STL {s7.get('stl',0)} | 3PM {s7.get('3pm',0)} | FG {s7.get('fg_pct',0)}%\n\n"
-                f"近14天（{gp14}場）\n"
-                f"   PTS {s14.get('pts',0)} | REB {s14.get('reb',0)} | AST {s14.get('ast',0)}\n"
-                f"   STL {s14.get('stl',0)} | 3PM {s14.get('3pm',0)} | FG {s14.get('fg_pct',0)}%"
+                f"{advice}"
             )
-            analysis = await analyze_player_with_claude(player_name, s7, s14, status, gp7)
+            analysis = await analyze_player_with_claude(player_name, s7, {}, status, gp7)
 
         if analysis:
             msg += f"\n\n📊 <b>近期分析</b>\n{analysis}"
@@ -546,14 +567,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "roster_report":
         await query.edit_message_text(
-            "📋 <b>球員表現日報</b>\n\n請選擇球員查看近期表現：",
+            "📅 <b>今日分析</b>\n\n請選擇球員：",
             parse_mode="HTML", reply_markup=player_list_kb("rpt")
         )
 
     # 球員名單（返回用）
     elif data in ("pl_7d", "pl_14d", "pl_rpt"):
         period = data[3:]
-        labels = {"7d": "近7天均值", "14d": "近14天均值", "rpt": "球員日報"}
+        labels = {"7d": "近7天均值", "14d": "近14天均值", "rpt": "今日分析"}
         await query.edit_message_text(
             f"🏀 <b>我的陣容 — {labels[period]}</b>\n\n請選擇球員：",
             parse_mode="HTML", reply_markup=player_list_kb(period)
@@ -640,103 +661,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 # 功能實作
 # ─────────────────────────────────────────────
-
-async def show_roster(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                      period: str, label: str, edit: bool = False):
-    try:
-        from data_loader import get_roster_with_stats
-        from data.nba_live import get_today_games
-
-        roster_data = get_roster_with_stats(period)
-        players = roster_data.get("players", [])
-
-        games = []
-        try:
-            games = get_today_games()
-        except Exception:
-            pass
-        today_teams = {g["home_abbr"] for g in games} | {g["away_abbr"] for g in games}
-
-        msgs = format_roster_cards(players, label, today_teams)
-        kb = roster_menu_kb()
-
-        if edit:
-            await update.callback_query.edit_message_text(msgs[0], parse_mode="HTML", reply_markup=kb if len(msgs) == 1 else None)
-            for i, m in enumerate(msgs[1:], 1):
-                await update.callback_query.message.reply_text(m, parse_mode="HTML",
-                    reply_markup=kb if i == len(msgs) - 1 else None)
-        else:
-            for i, m in enumerate(msgs):
-                await update.message.reply_text(m, parse_mode="HTML",
-                    reply_markup=kb if i == len(msgs) - 1 else None)
-    except Exception as e:
-        logger.error(f"show_roster error: {e}")
-        txt = f"載入陣容失敗：{e}"
-        if edit:
-            await update.callback_query.edit_message_text(txt, parse_mode="HTML", reply_markup=back_kb("menu_roster"))
-        else:
-            await update.message.reply_text(txt, parse_mode="HTML")
-
-
-async def show_daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
-    """
-    球員日報：近7天 + 近14天均值，含傷兵狀態
-    """
-    try:
-        from data_loader import get_roster_with_stats
-        from yahoo_api import get_my_roster_with_keys
-
-        loading_msg = "⏳ 載入球員日報..."
-        if edit:
-            await update.callback_query.edit_message_text(loading_msg, parse_mode="HTML")
-        else:
-            await update.message.reply_text(loading_msg, parse_mode="HTML")
-
-        roster_7d  = get_roster_with_stats("7d")
-        roster_14d = get_roster_with_stats("14d")
-        p14_map = {p["name"]: p for p in roster_14d.get("players", [])}
-
-        try:
-            yahoo_players = {p["name"]: p for p in get_my_roster_with_keys()}
-        except Exception as e:
-            logger.warning(f"get_my_roster_with_keys failed: {e}")
-            yahoo_players = {}
-
-        send = update.callback_query.message.reply_text
-
-        for p in roster_7d.get("players", []):
-            name    = p["name"]
-            stats7  = p.get("stats") or {}
-            stats14 = (p14_map.get(name, {}).get("stats") or {})
-            team    = p.get("team", "—")
-            pos     = p.get("position", "—")
-
-            yp          = yahoo_players.get(name, {})
-            status      = yp.get("status", "Active")
-            injury_note = yp.get("injury_note", "")
-
-            se       = status_emoji(status)
-            inj_line = f"\n⚠️ {injury_note}" if injury_note else ""
-            msg = (
-                f"{se} <b>{name}</b>  {team} · {pos}{inj_line}\n"
-                f"近7天:  PTS {stats7.get('pts',0)} | REB {stats7.get('reb',0)} "
-                f"| AST {stats7.get('ast',0)} | 3PM {stats7.get('3pm',0)} "
-                f"| FG {stats7.get('fg_pct',0)}%\n"
-                f"近14天: PTS {stats14.get('pts',0)} | REB {stats14.get('reb',0)} "
-                f"| AST {stats14.get('ast',0)}"
-            )
-            await send(msg, parse_mode="HTML")
-
-        await send("📋 日報完成", parse_mode="HTML", reply_markup=roster_menu_kb())
-
-    except Exception as e:
-        logger.error(f"show_daily_report error: {e}")
-        txt = f"生成日報失敗：{e}"
-        if edit:
-            await update.callback_query.edit_message_text(txt, parse_mode="HTML", reply_markup=back_kb("menu_roster"))
-        else:
-            await update.message.reply_text(txt, parse_mode="HTML")
-
 
 async def show_matchup(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
     try:
@@ -887,7 +811,7 @@ async def push_daily_report(context: ContextTypes.DEFAULT_TYPE):
             f"",
             f"⚫ 今日無賽（{len(resting)}人）",
             f"",
-            f"📋 點選「球員表現日報」選擇球員查看近期數據分析",
+            f"📅 點選「今日分析」選擇球員查看出賽狀況與近期趨勢",
         ]
 
         await context.bot.send_message(chat_id=int(chat_id), text="\n".join(lines), parse_mode="HTML")
