@@ -418,7 +418,10 @@ def format_player_card(season_row: dict, row_7d: dict | None, yahoo_status: dict
 # ─────────────────────────────────────────────
 
 async def analyze_player_with_claude(name: str, stats_7d: dict, stats_14d: dict,
-                                     status: str, gp_7d: int) -> str:
+                                     status: str, gp_7d: int,
+                                     inj_note: str = "", game_line: str = "",
+                                     pos: str = "—", team: str = "—",
+                                     gp_14d: int = 0) -> str:
     """呼叫 Claude claude-haiku-4-5 分析單一球員近期表現。無 API Key 時回傳空字串。"""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -427,28 +430,37 @@ async def analyze_player_with_claude(name: str, stats_7d: dict, stats_14d: dict,
         import anthropic
         import asyncio
         client = anthropic.Anthropic(api_key=api_key)
-        stats_text = (
-            f"球員：{name}  狀態：{status}\n"
-            f"近7天（{gp_7d}場）：PTS {stats_7d.get('pts',0)} | REB {stats_7d.get('reb',0)} "
-            f"| AST {stats_7d.get('ast',0)} | STL {stats_7d.get('stl',0)} "
-            f"| 3PM {stats_7d.get('3pm',0)} | FG {stats_7d.get('fg_pct',0)}%"
-        )
-        if stats_14d:
-            stats_text += (
-                f"\n近14天：PTS {stats_14d.get('pts',0)} | REB {stats_14d.get('reb',0)} "
-                f"| AST {stats_14d.get('ast',0)}"
+
+        inj_part = f"  傷兵：{inj_note}" if inj_note else ""
+        game_part = game_line.replace("\n   ", "  ") if game_line else "不詳"
+
+        def _fmt(d: dict, gp: int) -> str:
+            return (
+                f"PTS {d.get('pts',0)} | REB {d.get('reb',0)} | AST {d.get('ast',0)} "
+                f"| STL {d.get('stl',0)} | BLK {d.get('blk',0)} "
+                f"| 3PM {d.get('3pm',0)} | FG {d.get('fg_pct',0)}%"
+                f"（{gp}場）"
             )
+
+        stats_text = (
+            f"球員：{name}（{pos}）  球隊：{team}\n"
+            f"狀態：{status}{inj_part}\n"
+            f"今日賽事：{game_part}\n"
+            f"近7天：{_fmt(stats_7d, gp_7d)}\n"
+            f"近14天：{_fmt(stats_14d, gp_14d)}"
+        )
 
         def _call():
             msg = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=200,
+                max_tokens=220,
                 messages=[{
                     "role": "user",
                     "content": (
-                        "你是 Fantasy NBA 分析師。請根據球員7天與14天均值的趨勢，"
-                        "用2-3句繁體中文分析表現趨勢（上升/下降/穩定），"
-                        "最後給出建議（持有 / 觀察 / 考慮放棄）。不要重複列出數字。\n\n" + stats_text
+                        "你是 Fantasy NBA H2H 分析師。請根據以下球員資訊，"
+                        "用2-3句繁體中文分析近況（含傷兵狀態、趨勢、今日出賽影響），"
+                        "最後一句給出 Fantasy H2H 建議（持有 / 觀察 / 考慮放棄）。不要重複列出數字。\n\n"
+                        + stats_text
                     )
                 }]
             )
@@ -551,21 +563,29 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             analysis = await analyze_player_with_claude(player_name, s, {}, status, gp)
 
         else:  # rpt — 今日分析：今日出賽 + 7天 vs 14天趨勢 + 規則建議
-            games = []
-            try:
-                from data.nba_live import get_today_games
-                games = get_today_games()
-            except Exception:
-                pass
+            # 三個同步 HTTP 呼叫並行執行，大幅縮短等待時間
+            def _get_games():
+                try:
+                    from data.nba_live import get_today_games
+                    return get_today_games()
+                except Exception:
+                    return []
+
+            _loop = asyncio.get_event_loop()
+            games, r7, r14 = await asyncio.gather(
+                _loop.run_in_executor(None, _get_games),
+                _loop.run_in_executor(None, lambda: get_roster_with_stats("7d")),
+                _loop.run_in_executor(None, lambda: get_roster_with_stats("14d")),
+            )
+
             today_teams = {g["home_abbr"] for g in games} | {g["away_abbr"] for g in games}
 
-            r7   = get_roster_with_stats("7d")
-            r14  = get_roster_with_stats("14d")
             p7   = next((p for p in r7.get("players", []) if p["name"] == player_name), {})
             p14  = next((p for p in r14.get("players", []) if p["name"] == player_name), {})
             s7   = p7.get("stats") or {}
             s14  = p14.get("stats") or {}
             gp7  = p7.get("gp", 0)
+            gp14 = p14.get("gp", 0)
             team = p7.get("team", cached_player.get("team", "—"))
             pos  = p7.get("position", cached_player.get("position", "—"))
 
@@ -597,8 +617,12 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             else:
                 advice = "🟡 建議：持有觀察"
 
-            # 取得 Claude AI 分析（傳入真實 stats_14d）
-            analysis = await analyze_player_with_claude(player_name, s7, s14, status, gp7)
+            # 取得 Claude AI 分析（傳入完整 context：傷兵、今日出賽、雙週完整數據）
+            analysis = await analyze_player_with_claude(
+                player_name, s7, s14, status, gp7,
+                inj_note=inj, game_line=game_line,
+                pos=pos, team=team, gp_14d=gp14,
+            )
 
             # 組合訊息：無 AI 時顯示趨勢對比，有 AI 時顯示分析文字
             trend_lines = "\n".join([
