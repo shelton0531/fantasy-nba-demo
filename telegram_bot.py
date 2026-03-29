@@ -703,6 +703,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML", reply_markup=back_kb()
         )
         context.user_data["awaiting_search"] = True
+        context.user_data["search_msg_id"] = query.message.message_id
+        context.user_data["search_chat_id"] = query.message.chat.id
 
     elif data == "menu_standings":
         await query.edit_message_text("⏳ 載入排名中...", parse_mode="HTML")
@@ -782,7 +784,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["awaiting_search"] = False
 
     query_text = update.message.text.strip()
-    await update.message.reply_text(f"🔍 搜尋中：{query_text}...", parse_mode="HTML")
+    search_msg_id  = context.user_data.pop("search_msg_id", None)
+    search_chat_id = context.user_data.pop("search_chat_id", None)
+
+    async def _reply(text: str, reply_markup=None):
+        """優先 edit 原選單訊息，失敗才發新訊息"""
+        if search_msg_id and search_chat_id:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=search_chat_id,
+                    message_id=search_msg_id,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+                # 嘗試刪除使用者輸入的文字訊息（失敗靜默）
+                try:
+                    await update.message.delete()
+                except Exception:
+                    pass
+                return
+            except Exception:
+                pass
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
     try:
         from data_loader import find_player, load_players_data
@@ -790,10 +814,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = find_player(data["season"]["players"], query_text)
 
         if not row:
-            await update.message.reply_text(
+            await _reply(
                 f"找不到球員：<b>{query_text}</b>\n\n"
                 f"請輸入英文全名，例如：\n<code>LeBron James</code>",
-                parse_mode="HTML",
                 reply_markup=back_kb("menu_search"),
             )
             return
@@ -819,11 +842,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         msg = format_player_card(row, row_7d, yahoo_status)
-        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=back_kb("menu_search"))
+        await _reply(msg, reply_markup=back_kb("menu_search"))
 
     except Exception as e:
         logger.error(f"Player search error: {e}")
-        await update.message.reply_text(f"查詢失敗：{e}", parse_mode="HTML")
+        await _reply(f"查詢失敗：{e}")
 
 # ─────────────────────────────────────────────
 # 功能實作

@@ -391,11 +391,22 @@ def get_free_agent_recommendations(limit=5):
         print(f"[FA] Yahoo API 失敗，僅排除自己陣容: {e}")
         rostered_names_norm = {normalize(n) for n in user_names}
 
+    # 取得 FA 傷兵狀態，排除無法出賽的球員
+    fa_status_map = {}
+    try:
+        from yahoo_api import get_fa_players_status
+        fa_status_map = get_fa_players_status()
+    except Exception:
+        pass
+    _UNAVAIL = {'INJ', 'OUT', 'O', 'IR', 'IL', 'NA', 'SUSP', 'SUSPENDED', 'DL'}
+
     candidates = []
 
     for player in all_players:
+        fa_status = fa_status_map.get(player['PLAYER_NAME'].lower(), 'Active').upper()
         if (player['GP'] > 10 and
-            normalize(player['PLAYER_NAME']) not in rostered_names_norm):
+            normalize(player['PLAYER_NAME']) not in rostered_names_norm and
+            (not fa_status_map or fa_status not in _UNAVAIL)):
             score = 0
             if 'pts' in weak_keys:
                 score += player['PTS'] * 0.5
@@ -484,7 +495,14 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
     except Exception:
         pass
 
-    _UNAVAILABLE = {'INJ', 'OUT', 'NA'}
+    # Yahoo 所有「無法出賽」狀態變體（API 可能回傳 'O' 或 'OUT', 'IR' 或 'INJ' 等）
+    _UNAVAILABLE = {'INJ', 'OUT', 'O', 'IR', 'IL', 'NA', 'SUSP', 'SUSPENDED', 'DL'}
+
+    def _is_available(player_name: str) -> bool:
+        """若 fa_status_map 為空（API 失敗），保守地允許通過；有資料時才過濾"""
+        if not fa_status_map:
+            return True
+        return fa_status_map.get(player_name.lower(), 'Active').upper() not in _UNAVAILABLE
 
     # 篩選 FA：賽季場次 > 10、未被任何隊選走、近期有出賽、且非傷兵/停賽
     fas = [
@@ -492,7 +510,7 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
         if p.get('GP', 0) > 10
         and normalize(p['PLAYER_NAME']) not in rostered
         and recent_gp_map.get(normalize(p['PLAYER_NAME']), 0) > 0
-        and fa_status_map.get(p['PLAYER_NAME'].lower(), 'Active').upper() not in _UNAVAILABLE
+        and _is_available(p['PLAYER_NAME'])
     ]
 
     # 排序

@@ -386,11 +386,12 @@ def get_fa_players_status(count: int = 150) -> dict:
         print(f"[Yahoo API] 解析 FA 狀態失敗: {e}")
         return {}
 
-    try:
-        cache_path.parent.mkdir(exist_ok=True)
-        cache_path.write_text(json.dumps(status_map, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    if status_map:  # 只在有資料時才快取，避免空 dict 被快取導致整天過濾失效
+        try:
+            cache_path.parent.mkdir(exist_ok=True)
+            cache_path.write_text(json.dumps(status_map, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
 
     return status_map
 
