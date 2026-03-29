@@ -551,9 +551,9 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             analysis = await analyze_player_with_claude(player_name, s, {}, status, gp)
 
         else:  # rpt — 今日分析：今日出賽 + 7天 vs 14天趨勢 + 規則建議
-            from data.nba_live import get_today_games
             games = []
             try:
+                from data.nba_live import get_today_games
                 games = get_today_games()
             except Exception:
                 pass
@@ -798,9 +798,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        from data.nba_live import _fetch_n_game_stats, _find_player
-        raw_7d = _fetch_n_game_stats(7)
-        row_7d = _find_player(raw_7d, query_text)
+        row_7d = None
+        try:
+            from data.nba_live import _fetch_n_game_stats, _find_player
+            raw_7d = _fetch_n_game_stats(7)
+            row_7d = _find_player(raw_7d, query_text)
+        except Exception:
+            pass
 
         # 嘗試取得 Yahoo 狀態
         yahoo_status = None

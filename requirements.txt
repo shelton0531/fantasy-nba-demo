@@ -4,3 +4,4 @@ gunicorn==25.2.0
 python-telegram-bot[job-queue]==21.6
 pytz==2024.1
 anthropic>=0.40.0
+nba-api>=1.4.1

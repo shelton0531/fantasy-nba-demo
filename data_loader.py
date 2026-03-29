@@ -476,12 +476,23 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
     except Exception:
         pass
 
-    # 篩選 FA：賽季場次 > 10、未被任何隊選走、近期有出賽（過濾長期傷兵）
+    # 建立 FA 即時傷兵狀態 map（Yahoo API，每日快取）
+    fa_status_map = {}
+    try:
+        from yahoo_api import get_fa_players_status
+        fa_status_map = get_fa_players_status()
+    except Exception:
+        pass
+
+    _UNAVAILABLE = {'INJ', 'OUT', 'NA'}
+
+    # 篩選 FA：賽季場次 > 10、未被任何隊選走、近期有出賽、且非傷兵/停賽
     fas = [
         p for p in all_players
         if p.get('GP', 0) > 10
         and normalize(p['PLAYER_NAME']) not in rostered
         and recent_gp_map.get(normalize(p['PLAYER_NAME']), 0) > 0
+        and fa_status_map.get(p['PLAYER_NAME'].lower(), 'Active').upper() not in _UNAVAILABLE
     ]
 
     # 排序
