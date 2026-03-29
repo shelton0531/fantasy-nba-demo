@@ -270,7 +270,7 @@ def format_matchup(m: dict) -> str:
 # 格式化：FA 替換建議
 # ─────────────────────────────────────────────
 
-def format_fa_suggestions(fa_data: dict, losing_cats: list) -> str:
+def format_fa_suggestions(fa_data: dict, losing_cats: list, ai_notes: dict = None) -> str:
     players = fa_data.get("players", [])[:3]
     cats_str = " / ".join(losing_cats[:3]) if losing_cats else "整體補強"
     lines = [
@@ -281,10 +281,11 @@ def format_fa_suggestions(fa_data: dict, losing_cats: list) -> str:
     for i, p in enumerate(players, 1):
         a = p.get("avg", {})
         rec = " <b>★推薦</b>" if p.get("recommended") else ""
+        note = f"\n   🤖 {ai_notes[p['name']]}" if ai_notes and p["name"] in ai_notes else ""
         lines += [
             f"{i}. <b>{p['name']}</b>{rec}  {p.get('team','—')} · {p.get('position','—')}",
             f"   Fantasy #{p.get('rank_fantasy','—')}",
-            f"   PTS {a.get('pts',0)} | AST {a.get('ast',0)} | 3PM {a.get('threes',0)} | FG {a.get('fg_pct',0)}%",
+            f"   PTS {a.get('pts',0)} | AST {a.get('ast',0)} | 3PM {a.get('threes',0)} | FG {a.get('fg_pct',0)}%{note}",
             "",
         ]
     lines += [
@@ -458,6 +459,60 @@ async def analyze_player_with_claude(name: str, stats_7d: dict, stats_14d: dict,
     except Exception as e:
         logger.warning(f"Claude analysis failed for {name}: {e}")
         return ""
+
+
+async def analyze_fa_with_claude(players: list, losing_cats: list) -> dict:
+    """
+    批次分析 FA 球員，每位回傳一句說明。
+    回傳: {player_name: note_str}，無 API Key 時回傳 {}
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key or not players:
+        return {}
+    try:
+        import anthropic
+        import asyncio
+        import re as _re2
+        client = anthropic.Anthropic(api_key=api_key)
+
+        cats_str = "、".join(losing_cats[:3]) if losing_cats else "整體均衡補強"
+        players_text = ""
+        for i, p in enumerate(players, 1):
+            a = p.get("avg", {})
+            players_text += (
+                f"{i}. {p['name']}  {p.get('team','—')} · {p.get('position','—')}\n"
+                f"   PTS {a.get('pts',0)} | REB {a.get('reb',0)} | AST {a.get('ast',0)} "
+                f"| 3PM {a.get('threes',0)} | STL {a.get('stl',0)} | FG {a.get('fg_pct',0)}%\n"
+            )
+
+        prompt = (
+            f"你是 Fantasy NBA 分析師。我本週落後的類別是：{cats_str}。\n"
+            f"以下是 3 位自由球員候選：\n\n{players_text}\n"
+            f"請針對每位球員，用一句繁體中文說明他能否補強上述落後類別，格式如下（勿加其他內容）：\n"
+            f"1. [說明]\n2. [說明]\n3. [說明]"
+        )
+
+        def _call():
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return msg.content[0].text
+
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(None, _call)
+
+        notes = {}
+        for i, p in enumerate(players, 1):
+            m = _re2.search(rf"^{i}\.\s*(.+)", raw, _re2.MULTILINE)
+            if m:
+                notes[p["name"]] = m.group(1).strip()
+        return notes
+
+    except Exception as e:
+        logger.warning(f"analyze_fa_with_claude failed: {e}")
+        return {}
 
 
 async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -840,7 +895,8 @@ async def show_fa(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool
         m = calculate_h2h_matchup("season")
         losing_cats = [c["label"] for c in m.get("categories", []) if c["status"] == "losing"]
         fa_data = get_all_free_agents(offset=0, limit=3, sort="rank")
-        txt = format_fa_suggestions(fa_data, losing_cats)
+        ai_notes = await analyze_fa_with_claude(fa_data.get("players", []), losing_cats)
+        txt = format_fa_suggestions(fa_data, losing_cats, ai_notes)
         kb  = matchup_menu_kb()
         if edit:
             await update.callback_query.edit_message_text(txt, parse_mode="HTML",
