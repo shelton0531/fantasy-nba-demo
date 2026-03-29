@@ -468,6 +468,14 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
     recent_players = data.get('recent', {}).get('players', [])
     recent_gp_map = {normalize(p['PLAYER_NAME']): p.get('GP', 0) for p in recent_players}
 
+    # 建立 FA 位置 map（Yahoo API，每日快取）
+    fa_pos_map = {}
+    try:
+        from yahoo_api import get_fa_players_positions
+        fa_pos_map = get_fa_players_positions()
+    except Exception:
+        pass
+
     # 篩選 FA：賽季場次 > 10、未被任何隊選走、近期有出賽（過濾長期傷兵）
     fas = [
         p for p in all_players
@@ -497,7 +505,7 @@ def get_all_free_agents(offset=0, limit=30, sort='rank'):
             {
                 'name': p['PLAYER_NAME'],
                 'team': p['TEAM_ABBREVIATION'],
-                'position': '—',
+                'position': fa_pos_map.get(p['PLAYER_NAME'].lower(), '—'),
                 'rank_fantasy': int(p.get('NBA_FANTASY_PTS_RANK', 999)),
                 'recommended': normalize(p['PLAYER_NAME']) in rec_names,
                 'avg': {

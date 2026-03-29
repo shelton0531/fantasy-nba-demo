@@ -157,6 +157,20 @@ def player_list_kb(period: str) -> InlineKeyboardMarkup:
 # 工具：狀態 emoji
 # ─────────────────────────────────────────────
 
+def format_trend_line(label: str, v7: float, v14: float) -> str:
+    """顯示單一數據的 7天 vs 14天趨勢，threshold 5%"""
+    if v14 == 0:
+        return f"   {label:4s}  {v7}"
+    diff_pct = (v7 - v14) / v14
+    if diff_pct > 0.05:
+        arrow = "↑"
+    elif diff_pct < -0.05:
+        arrow = "↓"
+    else:
+        arrow = "="
+    return f"   {label:4s}  {v7} {arrow}（vs {v14}）"
+
+
 def status_emoji(status: str) -> str:
     s = (status or "").upper()
     if s in ("INJ", "OUT", "NA"):
@@ -282,19 +296,25 @@ def format_fa_suggestions(fa_data: dict, losing_cats: list) -> str:
 # 格式化：排名
 # ─────────────────────────────────────────────
 
-def format_standings(teams: list, standings: dict) -> str:
+def format_standings(teams: list, standings: dict, opp_name: str | None = None) -> str:
     # 按勝場排序
     def sort_key(t):
         rec = standings.get(t["team_key"], {})
         return (-rec.get("wins", 0), rec.get("losses", 99))
 
     sorted_teams = sorted(teams, key=sort_key)
+    opp_lower = opp_name.lower().strip() if opp_name else None
 
     lines = ["🏆 <b>聯盟排名</b>\n"]
     for rank, t in enumerate(sorted_teams, 1):
         rec = standings.get(t["team_key"], {})
         w, l, tie = rec.get("wins", 0), rec.get("losses", 0), rec.get("ties", 0)
-        marker = " ◀ 你" if t.get("is_my_team") else ""
+        if t.get("is_my_team"):
+            marker = " ◀ 你"
+        elif opp_lower and t["name"].lower().strip() == opp_lower:
+            marker = " ← 本週對手"
+        else:
+            marker = ""
         lines.append(f"#{rank:2d} {t['name'][:14]:14s} {w}W-{l}L-{tie}T{marker}")
 
     return "\n".join(lines)
@@ -425,8 +445,9 @@ async def analyze_player_with_claude(name: str, stats_7d: dict, stats_14d: dict,
                 messages=[{
                     "role": "user",
                     "content": (
-                        "你是 Fantasy NBA 分析師。請用2-3句繁體中文簡評此球員近期 Fantasy 表現，"
-                        "並在最後給出建議（持有 / 觀察 / 考慮放棄）。\n\n" + stats_text
+                        "你是 Fantasy NBA 分析師。請根據球員7天與14天均值的趨勢，"
+                        "用2-3句繁體中文分析表現趨勢（上升/下降/穩定），"
+                        "最後給出建議（持有 / 觀察 / 考慮放棄）。不要重複列出數字。\n\n" + stats_text
                     )
                 }]
             )
@@ -474,7 +495,7 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             analysis = await analyze_player_with_claude(player_name, s, {}, status, gp)
 
-        else:  # rpt — 今日分析：今日出賽 + 7天趨勢 + 規則建議
+        else:  # rpt — 今日分析：今日出賽 + 7天 vs 14天趨勢 + 規則建議
             from data.nba_live import get_today_games
             games = []
             try:
@@ -484,45 +505,71 @@ async def show_player_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
             today_teams = {g["home_abbr"] for g in games} | {g["away_abbr"] for g in games}
 
             r7   = get_roster_with_stats("7d")
+            r14  = get_roster_with_stats("14d")
             p7   = next((p for p in r7.get("players", []) if p["name"] == player_name), {})
+            p14  = next((p for p in r14.get("players", []) if p["name"] == player_name), {})
             s7   = p7.get("stats") or {}
+            s14  = p14.get("stats") or {}
             gp7  = p7.get("gp", 0)
             team = p7.get("team", cached_player.get("team", "—"))
             pos  = p7.get("position", cached_player.get("position", "—"))
 
-            # 今日出賽資訊
+            # 今日出賽資訊（含比賽時間）
             if team in today_teams:
                 opp_game = next((g for g in games if team in (g["home_abbr"], g["away_abbr"])), None)
-                game_str = f"{opp_game['away_abbr']} @ {opp_game['home_abbr']}" if opp_game else team
-                game_line = f"🟢 今日出賽：{game_str}"
+                if opp_game:
+                    time_str = _et_to_tst(opp_game.get("status", ""))
+                    game_line = f"🟢 今日出賽：{opp_game['away_abbr']} @ {opp_game['home_abbr']}\n   {time_str}"
+                else:
+                    game_line = f"🟢 今日出賽：{team}"
             else:
                 game_line = "⚫ 今日無比賽"
 
-            # 規則建議
-            pts = float(s7.get("pts", 0) or 0)
-            reb = float(s7.get("reb", 0) or 0)
-            ast = float(s7.get("ast", 0) or 0)
+            # 規則建議（含趨勢判斷）
+            pts7  = float(s7.get("pts", 0) or 0)
+            pts14 = float(s14.get("pts", 0) or 0)
+            reb7  = float(s7.get("reb", 0) or 0)
+            ast7  = float(s7.get("ast", 0) or 0)
+            trend_up = pts7 > pts14 * 1.1 if pts14 > 0 else False
             status_upper = (status or "").upper()
             if status_upper in ("INJ", "OUT", "NA"):
                 advice = "⛔ 建議：觀察（傷兵）"
-            elif pts >= 15 or (pts >= 12 and (reb >= 6 or ast >= 5)):
-                advice = "✅ 建議：持有"
             elif gp7 < 3:
                 advice = "🟡 建議：觀察（出賽場數少）"
+            elif pts7 >= 15 or (pts7 >= 12 and (reb7 >= 6 or ast7 >= 5)):
+                suffix = "（得分上升趨勢）" if trend_up else ""
+                advice = f"✅ 建議：持有{suffix}"
             else:
                 advice = "🟡 建議：持有觀察"
 
-            msg = (
-                f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n\n"
-                f"{game_line}\n\n"
-                f"近7天（{gp7}場）\n"
-                f"   PTS {s7.get('pts',0)} | REB {s7.get('reb',0)} | AST {s7.get('ast',0)}\n"
-                f"   STL {s7.get('stl',0)} | 3PM {s7.get('3pm',0)} | FG {s7.get('fg_pct',0)}%\n\n"
-                f"{advice}"
-            )
-            analysis = await analyze_player_with_claude(player_name, s7, {}, status, gp7)
+            # 取得 Claude AI 分析（傳入真實 stats_14d）
+            analysis = await analyze_player_with_claude(player_name, s7, s14, status, gp7)
 
-        if analysis:
+            # 組合訊息：無 AI 時顯示趨勢對比，有 AI 時顯示分析文字
+            trend_lines = "\n".join([
+                "📈 近期趨勢（7天 vs 14天均值）",
+                format_trend_line("PTS",  round(pts7, 1),               round(pts14, 1)),
+                format_trend_line("REB",  round(reb7, 1),               round(float(s14.get("reb", 0) or 0), 1)),
+                format_trend_line("AST",  round(ast7, 1),               round(float(s14.get("ast", 0) or 0), 1)),
+                format_trend_line("FG",   round(float(s7.get("fg_pct", 0) or 0), 1),
+                                          round(float(s14.get("fg_pct", 0) or 0), 1)),
+            ])
+
+            if analysis:
+                msg = (
+                    f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n\n"
+                    f"{game_line}\n\n"
+                    f"📊 AI 趨勢分析\n{analysis}"
+                )
+            else:
+                msg = (
+                    f"{se} <b>{player_name}</b>  {team} · {pos}{inj_line}\n\n"
+                    f"{game_line}\n\n"
+                    f"{trend_lines}\n\n"
+                    f"{advice}"
+                )
+
+        if analysis and period in ("7d", "14d"):
             msg += f"\n\n📊 <b>近期分析</b>\n{analysis}"
 
         kb = back_kb(f"pl_{period}")
@@ -689,7 +736,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not row:
             await update.message.reply_text(
-                f"找不到球員：<b>{query_text}</b>\n請確認英文姓名拼寫",
+                f"找不到球員：<b>{query_text}</b>\n\n"
+                f"請輸入英文全名，例如：\n<code>LeBron James</code>",
                 parse_mode="HTML",
                 reply_markup=back_kb("menu_search"),
             )
@@ -810,9 +858,16 @@ async def show_fa(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool
 async def show_standings(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
     try:
         from yahoo_api import get_league_standings, get_all_teams_with_rosters
+        from data_loader import calculate_h2h_matchup
         standings = get_league_standings()
         teams     = get_all_teams_with_rosters()
-        txt = format_standings(teams, standings)
+        opp_name = None
+        try:
+            m = calculate_h2h_matchup("season")
+            opp_name = m.get("opponent")
+        except Exception:
+            pass
+        txt = format_standings(teams, standings, opp_name)
         kb  = back_kb()
         if edit:
             await update.callback_query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)

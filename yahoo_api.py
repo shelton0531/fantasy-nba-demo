@@ -315,6 +315,46 @@ def get_player_news(player_key, max_items=3):
     return news_items
 
 
+def get_fa_players_positions(count: int = 150) -> dict:
+    """
+    取得 FA 球員的 Fantasy 位置 map，每日快取。
+    回傳: {player_name_lower: position_str}，失敗回傳 {}
+    """
+    from pathlib import Path
+    from datetime import date
+    import json
+
+    cache_path = Path("cache") / f"fa_positions_{date.today().isoformat()}.json"
+    if cache_path.exists():
+        try:
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    root = _get(f"league/{LEAGUE_KEY}/players;status=FA;count={count}")
+    if root is None:
+        return {}
+
+    pos_map = {}
+    try:
+        for player_el in root.iter(f'{{{NS}}}player'):
+            full_el = player_el.find(f'.//{{{NS}}}full')
+            pos_el  = player_el.find(f'.//{{{NS}}}display_position')
+            if full_el is not None and full_el.text:
+                pos_map[full_el.text.lower()] = pos_el.text if pos_el is not None else '—'
+    except Exception as e:
+        print(f"[Yahoo API] 解析 FA 位置失敗: {e}")
+        return {}
+
+    try:
+        cache_path.parent.mkdir(exist_ok=True)
+        cache_path.write_text(json.dumps(pos_map, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+    return pos_map
+
+
 if __name__ == "__main__":
     from yahoo_config import CURRENT_WEEK
     print("[Yahoo API 測試]")
