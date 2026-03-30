@@ -112,31 +112,44 @@ def main_menu_kb():
         [InlineKeyboardButton("📅 今日賽程", callback_data="menu_schedule")],
     ])
 
+def _quick_nav_rows():
+    """所有選單底部統一快捷列（5 個主功能）"""
+    return [
+        [InlineKeyboardButton("🏀 陣容", callback_data="menu_roster"),
+         InlineKeyboardButton("⚔️ 對戰", callback_data="menu_matchup"),
+         InlineKeyboardButton("🔍 查詢", callback_data="menu_search")],
+        [InlineKeyboardButton("🏆 排名", callback_data="menu_standings"),
+         InlineKeyboardButton("📅 賽程", callback_data="menu_schedule")],
+    ]
+
 def roster_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("7天均值", callback_data="roster_7d"),
          InlineKeyboardButton("14天均值", callback_data="roster_14d")],
         [InlineKeyboardButton("📅 今日分析", callback_data="roster_report")],
         [InlineKeyboardButton("🏥 傷兵概覽", callback_data="roster_injuries")],
-        [InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")],
+        *_quick_nav_rows(),
     ])
 
 def matchup_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 當前對戰數據", callback_data="matchup_stats")],
         [InlineKeyboardButton("💡 FA 替換建議", callback_data="matchup_fa")],
-        [InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")],
+        *_quick_nav_rows(),
     ])
 
 def schedule_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("我的球員今日出賽", callback_data="schedule_mine")],
         [InlineKeyboardButton("全部今日賽程", callback_data="schedule_all")],
-        [InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")],
+        *_quick_nav_rows(),
     ])
 
 def back_kb(target="back_main"):
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 返回", callback_data=target)]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ 返回", callback_data=target)],
+        *_quick_nav_rows(),
+    ])
 
 def player_list_kb(period: str) -> InlineKeyboardMarkup:
     """球員選擇鍵盤（2人一排）。period: '7d' | '14d' | 'rpt'"""
@@ -150,7 +163,7 @@ def player_list_kb(period: str) -> InlineKeyboardMarkup:
             row = []
     if row:
         buttons.append(row)
-    buttons.append([InlineKeyboardButton("⬅️ 返回陣容選單", callback_data="menu_roster")])
+    buttons.extend(_quick_nav_rows())
     return InlineKeyboardMarkup(buttons)
 
 # ─────────────────────────────────────────────
